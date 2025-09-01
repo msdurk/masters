@@ -1,0 +1,349 @@
+{
+  "access": {
+    "embargo": {
+      "active": false,
+      "reason": null
+    },
+    "files": "public",
+    "record": "public",
+    "status": "open"
+  },
+  "created": "2023-09-13T04:14:04.561436+00:00",
+  "custom_fields": {},
+  "deletion_status": {
+    "is_deleted": false,
+    "status": "P"
+  },
+  "files": {
+    "count": 11,
+    "enabled": true,
+    "entries": {
+      "CEAS_08.csv": {
+        "access": {
+          "hidden": false
+        },
+        "checksum": "md5:1f0d59191eec892a709995d48cd8decb",
+        "ext": "csv",
+        "id": "3de9ac53-741a-456c-b119-ff0295b26114",
+        "key": "CEAS_08.csv",
+        "links": {
+          "content": "https://zenodo.org/api/records/8339691/files/CEAS_08.csv/content",
+          "self": "https://zenodo.org/api/records/8339691/files/CEAS_08.csv"
+        },
+        "metadata": null,
+        "mimetype": "text/csv",
+        "size": 67902056,
+        "storage_class": "L"
+      },
+      "Enron.csv": {
+        "access": {
+          "hidden": false
+        },
+        "checksum": "md5:10489e0fdcc8af6fe62135c689367d40",
+        "ext": "csv",
+        "id": "03842aee-cbde-46d7-abb2-0f67711121a2",
+        "key": "Enron.csv",
+        "links": {
+          "content": "https://zenodo.org/api/records/8339691/files/Enron.csv/content",
+          "self": "https://zenodo.org/api/records/8339691/files/Enron.csv"
+        },
+        "metadata": null,
+        "mimetype": "text/csv",
+        "size": 44837129,
+        "storage_class": "L"
+      },
+      "Ling.csv": {
+        "access": {
+          "hidden": false
+        },
+        "checksum": "md5:eac6399dc0c7ae455aebb64423dadc8b",
+        "ext": "csv",
+        "id": "3d17e313-0836-432a-8813-cfc2bf803213",
+        "key": "Ling.csv",
+        "links": {
+          "content": "https://zenodo.org/api/records/8339691/files/Ling.csv/content",
+          "self": "https://zenodo.org/api/records/8339691/files/Ling.csv"
+        },
+        "metadata": null,
+        "mimetype": "text/csv",
+        "size": 9337509,
+        "storage_class": "L"
+      },
+      "Nazario.csv": {
+        "access": {
+          "hidden": false
+        },
+        "checksum": "md5:4022d055bb7cf8602f30f768f652e91e",
+        "ext": "csv",
+        "id": "0b81da27-431f-4bac-8089-6e16ba5a6d58",
+        "key": "Nazario.csv",
+        "links": {
+          "content": "https://zenodo.org/api/records/8339691/files/Nazario.csv/content",
+          "self": "https://zenodo.org/api/records/8339691/files/Nazario.csv"
+        },
+        "metadata": null,
+        "mimetype": "text/csv",
+        "size": 7811841,
+        "storage_class": "L"
+      },
+      "Nazario_5.csv": {
+        "access": {
+          "hidden": false
+        },
+        "checksum": "md5:45db8330ea4aabbf72f5199949ae03e5",
+        "ext": "csv",
+        "id": "349b5db9-2d4e-45ef-be48-09f5b1172170",
+        "key": "Nazario_5.csv",
+        "links": {
+          "content": "https://zenodo.org/api/records/8339691/files/Nazario_5.csv/content",
+          "self": "https://zenodo.org/api/records/8339691/files/Nazario_5.csv"
+        },
+        "metadata": null,
+        "mimetype": "text/csv",
+        "size": 11755517,
+        "storage_class": "L"
+      },
+      "Nigerian_5.csv": {
+        "access": {
+          "hidden": false
+        },
+        "checksum": "md5:edfbbb89c40e7447f47867bcc82e72f9",
+        "ext": "csv",
+        "id": "51e3f63b-057a-40e7-be87-d833a1d0b405",
+        "key": "Nigerian_5.csv",
+        "links": {
+          "content": "https://zenodo.org/api/records/8339691/files/Nigerian_5.csv/content",
+          "self": "https://zenodo.org/api/records/8339691/files/Nigerian_5.csv"
+        },
+        "metadata": null,
+        "mimetype": "text/csv",
+        "size": 18253749,
+        "storage_class": "L"
+      },
+      "Nigerian_Fraud.csv": {
+        "access": {
+          "hidden": false
+        },
+        "checksum": "md5:65fd47ae7cb4ae762e4be42b11905d63",
+        "ext": "csv",
+        "id": "fc16999b-027f-49a4-b373-4becc7b00dad",
+        "key": "Nigerian_Fraud.csv",
+        "links": {
+          "content": "https://zenodo.org/api/records/8339691/files/Nigerian_Fraud.csv/content",
+          "self": "https://zenodo.org/api/records/8339691/files/Nigerian_Fraud.csv"
+        },
+        "metadata": null,
+        "mimetype": "text/csv",
+        "size": 9192393,
+        "storage_class": "L"
+      },
+      "SpamAssasin.csv": {
+        "access": {
+          "hidden": false
+        },
+        "checksum": "md5:d921e0b2333bfaa058bd38193e6b3fbd",
+        "ext": "csv",
+        "id": "c1f60cb6-5a54-4995-964f-9e54fc694dd7",
+        "key": "SpamAssasin.csv",
+        "links": {
+          "content": "https://zenodo.org/api/records/8339691/files/SpamAssasin.csv/content",
+          "self": "https://zenodo.org/api/records/8339691/files/SpamAssasin.csv"
+        },
+        "metadata": null,
+        "mimetype": "text/csv",
+        "size": 14879195,
+        "storage_class": "L"
+      },
+      "TREC_05.csv": {
+        "access": {
+          "hidden": false
+        },
+        "checksum": "md5:ef4023fa9e64247212487b77a4c7d98e",
+        "ext": "csv",
+        "id": "f8c0ea4e-1b95-49b2-bd6d-d273306e13cd",
+        "key": "TREC_05.csv",
+        "links": {
+          "content": "https://zenodo.org/api/records/8339691/files/TREC_05.csv/content",
+          "self": "https://zenodo.org/api/records/8339691/files/TREC_05.csv"
+        },
+        "metadata": null,
+        "mimetype": "text/csv",
+        "size": 123130931,
+        "storage_class": "L"
+      },
+      "TREC_06.csv": {
+        "access": {
+          "hidden": false
+        },
+        "checksum": "md5:b840dc9477f86c098a71a0dfd25c928e",
+        "ext": "csv",
+        "id": "31bf4dc2-4722-4312-9f85-232949ad8b58",
+        "key": "TREC_06.csv",
+        "links": {
+          "content": "https://zenodo.org/api/records/8339691/files/TREC_06.csv/content",
+          "self": "https://zenodo.org/api/records/8339691/files/TREC_06.csv"
+        },
+        "metadata": null,
+        "mimetype": "text/csv",
+        "size": 41922386,
+        "storage_class": "L"
+      },
+      "TREC_07.csv": {
+        "access": {
+          "hidden": false
+        },
+        "checksum": "md5:e5a5ae0de1580965191cb32806dc0dae",
+        "ext": "csv",
+        "id": "2ec70f34-034d-478b-826c-a3acd02266f6",
+        "key": "TREC_07.csv",
+        "links": {
+          "content": "https://zenodo.org/api/records/8339691/files/TREC_07.csv/content",
+          "self": "https://zenodo.org/api/records/8339691/files/TREC_07.csv"
+        },
+        "metadata": null,
+        "mimetype": "text/csv",
+        "size": 100246925,
+        "storage_class": "L"
+      }
+    },
+    "order": [],
+    "total_bytes": 449269631
+  },
+  "id": "8339691",
+  "is_draft": false,
+  "is_published": true,
+  "links": {
+    "access": "https://zenodo.org/api/records/8339691/access",
+    "access_grants": "https://zenodo.org/api/records/8339691/access/grants",
+    "access_links": "https://zenodo.org/api/records/8339691/access/links",
+    "access_request": "https://zenodo.org/api/records/8339691/access/request",
+    "access_users": "https://zenodo.org/api/records/8339691/access/users",
+    "archive": "https://zenodo.org/api/records/8339691/files-archive",
+    "archive_media": "https://zenodo.org/api/records/8339691/media-files-archive",
+    "communities": "https://zenodo.org/api/records/8339691/communities",
+    "communities-suggestions": "https://zenodo.org/api/records/8339691/communities-suggestions",
+    "doi": "https://doi.org/10.5281/zenodo.8339691",
+    "draft": "https://zenodo.org/api/records/8339691/draft",
+    "files": "https://zenodo.org/api/records/8339691/files",
+    "latest": "https://zenodo.org/api/records/8339691/versions/latest",
+    "latest_html": "https://zenodo.org/records/8339691/latest",
+    "media_files": "https://zenodo.org/api/records/8339691/media-files",
+    "parent": "https://zenodo.org/api/records/8339690",
+    "parent_doi": "https://doi.org/10.5281/zenodo.8339690",
+    "parent_doi_html": "https://zenodo.org/doi/10.5281/zenodo.8339690",
+    "parent_html": "https://zenodo.org/records/8339690",
+    "preview_html": "https://zenodo.org/records/8339691?preview=1",
+    "requests": "https://zenodo.org/api/records/8339691/requests",
+    "reserve_doi": "https://zenodo.org/api/records/8339691/draft/pids/doi",
+    "self": "https://zenodo.org/api/records/8339691",
+    "self_doi": "https://doi.org/10.5281/zenodo.8339691",
+    "self_doi_html": "https://zenodo.org/doi/10.5281/zenodo.8339691",
+    "self_html": "https://zenodo.org/records/8339691",
+    "self_iiif_manifest": "https://zenodo.org/api/iiif/record:8339691/manifest",
+    "self_iiif_sequence": "https://zenodo.org/api/iiif/record:8339691/sequence/default",
+    "versions": "https://zenodo.org/api/records/8339691/versions"
+  },
+  "media_files": {
+    "count": 0,
+    "enabled": false,
+    "entries": {},
+    "order": [],
+    "total_bytes": 0
+  },
+  "metadata": {
+    "creators": [
+      {
+        "person_or_org": {
+          "family_name": "Arifa Islam",
+          "given_name": "Champa",
+          "name": "Arifa Islam, Champa",
+          "type": "personal"
+        }
+      }
+    ],
+    "description": "<p>We have curated 11 datasets spanning from 1995 to 2022.</p>\n<p>If you use this datasets, please cite:<br>1. A. I. Champa, M. F. Rabbi, and M. F. Zibran, &ldquo;Why phishing emails escape detection: A closer look at the failure points,&rdquo; in&nbsp;<em>12th Interna- tional Symposium on Digital Forensics and Security (ISDFS)</em>, 2024, pp. 1&ndash;6.<br>2. A. I. Champa, M. F. Rabbi, and M. F. Zibran, &ldquo;Curated datasets and feature analysis for phishing email detection with machine learning,&rdquo; in 3rd IEEE International Conference on Computing and Machine Intelligence (ICMI), 2024, pp. 1&ndash;7.</p>\n<p><br>Bibtext:<br>1. @inproceedings{champa2024phishing,<br>&nbsp; title={Why Phishing Emails Escape Detection: A Closer Look at the Failure Points},<br>&nbsp; author={Champa, Arifa I and Rabbi, Fazle and Zibran, Minhaz F},<br>&nbsp; booktitle={2024 12th International Symposium on Digital Forensics and Security (ISDFS)},<br>&nbsp; pages={1--6},<br>&nbsp; year={2024},<br>&nbsp; organization={IEEE}<br>}</p>\n<p>2. @inproceedings{champa2024curated,<br>&nbsp; title={Curated Datasets and Feature Analysis for Phishing Email Detection with Machine Learning},<br>&nbsp; author={Champa, Arifa I and Rabbi, Md Fazle and Zibran, Minhaz F},<br>&nbsp; booktitle={3rd IEEE International Conference on Computing and Machine Intelligence (ICMI)},<br>&nbsp; pages = {1--7},<br>&nbsp; year={2024}<br>}</p>",
+    "publication_date": "2023-09-13",
+    "publisher": "Zenodo",
+    "resource_type": {
+      "id": "dataset",
+      "title": {
+        "de": "Datensatz",
+        "en": "Dataset"
+      }
+    },
+    "rights": [
+      {
+        "description": {
+          "en": "The Creative Commons Attribution license allows re-distribution and re-use of a licensed work on the condition that the creator is appropriately credited."
+        },
+        "icon": "cc-by-icon",
+        "id": "cc-by-4.0",
+        "props": {
+          "scheme": "spdx",
+          "url": "https://creativecommons.org/licenses/by/4.0/legalcode"
+        },
+        "title": {
+          "en": "Creative Commons Attribution 4.0 International"
+        }
+      }
+    ],
+    "title": "Phishing Email Curated Datasets"
+  },
+  "parent": {
+    "access": {
+      "owned_by": {
+        "user": "608878"
+      },
+      "settings": {
+        "accept_conditions_text": null,
+        "allow_guest_requests": false,
+        "allow_user_requests": false,
+        "secret_link_expiration": 0
+      }
+    },
+    "communities": {},
+    "id": "8339690",
+    "pids": {
+      "doi": {
+        "client": "datacite",
+        "identifier": "10.5281/zenodo.8339690",
+        "provider": "datacite"
+      }
+    }
+  },
+  "pids": {
+    "doi": {
+      "client": "datacite",
+      "identifier": "10.5281/zenodo.8339691",
+      "provider": "datacite"
+    },
+    "oai": {
+      "identifier": "oai:zenodo.org:8339691",
+      "provider": "oai"
+    }
+  },
+  "revision_id": 7,
+  "stats": {
+    "all_versions": {
+      "data_volume": 1854576364342.0,
+      "downloads": 35836,
+      "unique_downloads": 26284,
+      "unique_views": 15891,
+      "views": 17651
+    },
+    "this_version": {
+      "data_volume": 1853240381488.0,
+      "downloads": 35814,
+      "unique_downloads": 26267,
+      "unique_views": 15876,
+      "views": 17635
+    }
+  },
+  "status": "published",
+  "swh": {},
+  "updated": "2024-09-25T16:08:53.962069+00:00",
+  "versions": {
+    "index": 1,
+    "is_latest": true
+  }
+}
