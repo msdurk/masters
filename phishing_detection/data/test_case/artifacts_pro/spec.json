@@ -1,0 +1,75 @@
+{
+  "best_params": {
+    "clf__C": 2.0,
+    "features__char__ngram_range": [
+      3,
+      6
+    ],
+    "features__word__ngram_range": [
+      1,
+      1
+    ]
+  },
+  "classes": [
+    "legit",
+    "phishing"
+  ],
+  "thresholds": {
+    "best_f1_threshold": 0.5572376271333129,
+    "p_target_threshold": 0.9999159489685941,
+    "target_precision": 0.95
+  },
+  "test_eval": {
+    "default_0.5": {
+      "accuracy": 0.972457627118644,
+      "precision": 0.9473684210526315,
+      "recall": 0.9545454545454546,
+      "f1": 0.9509433962264151,
+      "roc_auc": 0.9895053475935828,
+      "confusion_matrix": [
+        [
+          333,
+          7
+        ],
+        [
+          6,
+          126
+        ]
+      ]
+    },
+    "best_f1": {
+      "accuracy": 0.9745762711864406,
+      "precision": 0.9615384615384616,
+      "recall": 0.946969696969697,
+      "f1": 0.9541984732824428,
+      "roc_auc": 0.9895053475935828,
+      "confusion_matrix": [
+        [
+          335,
+          5
+        ],
+        [
+          7,
+          125
+        ]
+      ]
+    },
+    "p_target": {
+      "accuracy": 0.7203389830508474,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "roc_auc": 0.9895053475935828,
+      "confusion_matrix": [
+        [
+          340,
+          0
+        ],
+        [
+          132,
+          0
+        ]
+      ]
+    }
+  }
+}
