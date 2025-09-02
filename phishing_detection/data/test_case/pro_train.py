@@ -7,7 +7,20 @@ Pro Email Classifier Trainer
 - Threshold tuning for best F1 and target phishing precision
 - Final model refit on train+val with best params
 
-Author: ChatGPT
+
+use:
+python pro_train.py \
+  --legit human_legit.csv llm_legit.csv \
+  --phish humen_phishing.csv llm_phishing.csv \
+  --outdir ./artifacts_pro \
+  --test-size 0.2 \
+  --val-size 0.25 \
+  --min-df 2 \
+  --max-features 80000 \
+  --word-ngrams 1 2 \
+  --char-ngrams 3 5 \
+  --grid \
+  --target-precision 0.95
 """
 
 import argparse
