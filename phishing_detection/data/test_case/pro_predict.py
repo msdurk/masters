@@ -1,20 +1,32 @@
 #!/usr/bin/env python3
 """
-Pro Predictor
-- Supports threshold modes: default (0.5), best_f1, p_target (from thresholds.json)
+Pro Predictor (shared-module version)
+- Imports TextStatsTransformer from components.py
+- Registers it under __main__ so models saved from scripts still unpickle
+- Threshold modes: default (0.5), best_f1, p_target (from thresholds.json)
 - Input via CLI arg, stdin, or a CSV file
 
-Examples:
-  python pro_predict.py --model artifacts_pro/model.joblib --threshold-mode p_target --text "Your account was suspended..."
-  echo "Hello" | python pro_predict.py --model artifacts_pro/model.joblib --threshold 0.8
-  python pro_predict.py --model artifacts_pro/model.joblib --csv emails.csv --text-col body
+
+run from data:
+python test_case/pro_predict.py \
+  --model test_case/artifacts_pro/model.joblib \
+  --thresholds test_case/artifacts_pro/thresholds.json \
+  --threshold-mode p_target \
+  --csv raw/Nigerian_5.csv \
+  --text-col body
 """
 
 import argparse, sys, json
+from pathlib import Path
+import numpy as np
 import pandas as pd
 import joblib
-import numpy as np
-from pathlib import Path
+
+# --- Ensure the custom class is available before loading the model -----------
+from components import TextStatsTransformer  # shared definition
+import __main__ as _m
+setattr(_m, "TextStatsTransformer", TextStatsTransformer)
+# -----------------------------------------------------------------------------
 
 def load_threshold(th_path, mode=None, explicit=None):
     if explicit is not None:
@@ -51,7 +63,12 @@ def main():
     args = ap.parse_args()
 
     pipe = joblib.load(args.model)
-    threshold = load_threshold(args.thresholds, mode=args.threshold_mode if args.threshold_mode!="default" else None, explicit=args.threshold)
+
+    threshold = load_threshold(
+        args.thresholds,
+        mode=(args.threshold_mode if args.threshold_mode != "default" else None),
+        explicit=args.threshold
+    )
 
     # Single text from CLI or stdin
     if args.text is None and args.csv is None:
@@ -70,7 +87,7 @@ def main():
 
     # CSV batch mode
     df = pd.read_csv(args.csv)
-    col = args.text_col or ( "text" if "text" in df.columns else df.columns[0] )
+    col = args.text_col or ("text" if "text" in df.columns else df.columns[0])
     texts = df[col].astype(str).tolist()
     preds, scores = predict_texts(pipe, texts, threshold=threshold)
     out = df.copy()
