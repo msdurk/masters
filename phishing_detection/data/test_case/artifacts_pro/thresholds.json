@@ -1,5 +1,5 @@
 {
-  "best_f1_threshold": 0.5572376271333129,
-  "p_target_threshold": 0.9999159489685941,
+  "best_f1_threshold": 0.488192407256602,
+  "p_target_threshold": 0.9999689105891065,
   "target_precision": 0.95
 }
