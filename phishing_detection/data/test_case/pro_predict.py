@@ -7,12 +7,12 @@ Pro Predictor (shared-module version)
 - Input via CLI arg, stdin, or a CSV file
 
 
-run from data:
-python test_case/pro_predict.py \
-  --model test_case/artifacts_pro/model.joblib \
-  --thresholds test_case/artifacts_pro/thresholds.json \
+run from phishing_detection:
+python data/test_case/pro_predict.py \ 
+  --model data/test_case/artifacts_pro/model.joblib \
+  --thresholds data/test_case/artifacts_pro/thresholds.json \
   --threshold-mode p_target \
-  --csv raw/Nigerian_5.csv \
+  --csv filtered_raw/Nazario_5_removed_01.csv \
   --text-col body
 """
 
