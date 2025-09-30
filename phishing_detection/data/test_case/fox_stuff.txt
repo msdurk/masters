@@ -1,0 +1,38 @@
+login:
+ssh ec-mathiassd@fox.educloud.no
+
+
+runtime environment:
+module avail Python
+module load Python/3.x
+python -m venv ~/venvs/myenv
+source ~/venvs/myenv/bin/activate
+pip install -r ~/projects/myproj/requirements.txt
+
+
+
+run an interactive session:
+salloc --account=ecXX --time=00:30:00 --mem=2G --ntasks=1
+
+srun --cpu-bind=cores python run.py
+
+
+
+run a job:
+#eddit the gpu_job.sbatch
+#examples:
+python pro_train_embed.py \
+  --outdir models/embed_miniLM \
+  --embed-backend sentence-transformers \
+  --model all-MiniLM-L6-v2
+
+python pro_train_embed.py \
+  --outdir models/embed_tfidf \
+  --embed-backend tfidf
+
+
+
+
+mkdir -p logs
+sbatch gpu_job.sbatch
+squeue -u $USER

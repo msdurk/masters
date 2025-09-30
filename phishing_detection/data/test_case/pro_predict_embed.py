@@ -3,6 +3,8 @@
 # Predict with the saved model (supports both TF-IDF and embedding variants)
 # Usage:
 #   python pro_predict_embed.py --model-dir models/embed_v1 --in path/to/file.csv --out preds.csv
+#ex:
+#   python pro_predict_embed.py --model-dir /fp/homes01/u01/ec-mathiassd/phishing_detection/data/test_case/models/embed_miniLM/model.joblib --in path/to/file.csv --out preds.csv
 import os, argparse, json, sys, re, joblib, numpy as np, pandas as pd
 from components import TextStatsTransformer
 from _loader_utils import read_simple_csv, read_problem_llm_phishing

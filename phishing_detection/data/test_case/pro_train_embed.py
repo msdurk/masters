@@ -18,6 +18,7 @@
 import os, argparse, json, sys, re
 import numpy as np
 import pandas as pd
+from scipy import sparse
 
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
@@ -31,6 +32,30 @@ import joblib
 # Local utils
 from _loader_utils import read_simple_csv, read_problem_llm_phishing, unify_frames
 from components import TextStatsTransformer
+
+def _to_2d(X):
+    """Ensure array/matrix is 2D with shape (n_samples, n_features)."""
+    if sparse.issparse(X):
+        # already 2D if sparse; if someone passed a 1D dense array, convert below
+        return X
+    X = np.asarray(X)
+    if X.ndim == 1:
+        X = X.reshape(-1, 1)   # (n_samples,) -> (n_samples, 1)
+    return X
+
+def _hstack(A, B):
+    """Horizontally stack dense/sparse safely."""
+    A = _to_2d(A)
+    B = _to_2d(B)
+    assert A.shape[0] == B.shape[0], f"Row mismatch: {A.shape} vs {B.shape}"
+    if sparse.issparse(A) or sparse.issparse(B):
+        # make both sparse for consistent stacking
+        if not sparse.issparse(A): A = sparse.csr_matrix(A)
+        if not sparse.issparse(B): B = sparse.csr_matrix(B)
+        return sparse.hstack([A, B], format="csr")
+    else:
+        return np.hstack([A, B])
+
 
 def engineered_features(df: pd.DataFrame) -> np.ndarray:
     texts = df["text"].fillna("").astype(str).values
@@ -84,7 +109,7 @@ def build_embedder(args):
 
 def load_all_data() -> pd.DataFrame:
     # Provided files
-    base = "/mnt/data"
+    base = "/fp/homes01/u01/ec-mathiassd/phishing_detection/data/test_case/"
     frames = []
     # HuggingFace-like corpora
     frames.append(read_simple_csv(os.path.join(base, "hug_legit.csv")).assign(source="hug_legit", assumed_label=0))
@@ -162,8 +187,8 @@ def main():
         stats = TextStatsTransformer()
         F_train = stats.fit_transform(X_train['text'])
         F_test  = stats.transform(X_test['text'])
-        Xtr = np.hstack([E_train, F_train])
-        Xte = np.hstack([E_test, F_test])
+        Xtr = _hstack(E_train, F_train)
+        Xte = _hstack(E_test, F_test)
 
         scaler = StandardScaler(with_mean=False)  # for sparse compatibility; (embeddings are dense)
         clf = LogisticRegression(max_iter=2000, class_weight="balanced", n_jobs=-1)
