@@ -125,10 +125,8 @@ def load_all_data() -> pd.DataFrame:
     # LLM synthetic
     llm_legit = read_simple_csv(os.path.join(base, "llm_legit.csv")).assign(source="llm_legit")
     llm_legit["label"] = 0
-    # Problem child
-    llm_phish = read_problem_llm_phishing(os.path.join(base, "llm_phishing.csv")).assign(source="llm_phishing")
-    frames += [llm_legit[["text","label"]], llm_phish[["text","label"]]]
-
+    llm_phish = read_simple_csv(os.path.join(base, "llm_phishing_fixed.csv")).assign(source="llm_phishing")
+    llm_phish["label"] = 1
     # Hug sets have only text. Use assumed_label
     frames[0]["label"] = 0
     frames[1]["label"] = 1

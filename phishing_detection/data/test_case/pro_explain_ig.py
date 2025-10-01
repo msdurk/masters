@@ -10,8 +10,8 @@ Usage examples:
   python pro_explain_ig.py --model-dir models/embed_v1 --text "URGENT: Verify your account now..."
   python pro_explain_ig.py --model-dir models/embed_v1 --input-csv emails.csv --text-col text --out attributions.csv
 
-  python pro_explain_ig.py --model-dir models/embed_v1 \
-  --input-csv emails.csv --text-col text --out attributions.csv --topk 20 --steps 64
+  python pro_explain_ig.py --model-dir /fp/homes01/u01/ec-mathiassd/phishing_detection/data/test_case/models/embed_miniLM \
+  --input-csv ll_phishing.csv --text-col text --out attributions.csv --topk 20 --steps 64
 Requirements:
   pip install torch transformers sentence-transformers captum scikit-learn joblib pandas numpy
 """
@@ -20,6 +20,7 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
+import captum
 from captum.attr import LayerIntegratedGradients
 from transformers import AutoModel, AutoTokenizer
 import joblib

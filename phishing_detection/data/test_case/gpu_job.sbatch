@@ -8,7 +8,7 @@
 #SBATCH --output=logs/%x_%j.out
 
 module load Python/3.12.3-GCCcore-13.3.0
-source ~/venvs/py312/bin/activate
+source ~/venvs/myenv/bin/activate
 
 # (optional but handy for debugging)
 which python
@@ -16,8 +16,9 @@ python -V
 python -c "import numpy; print('NumPy', numpy.__version__)"
 
 # Run your code
-python pro_train_embed.py \
-  --outdir models/embed_miniLM \
-  --embed-backend sentence-transformers \
-  --model all-MiniLM-L6-v2
+python pro_explain_ig_robust.py \
+  --model-dir models/embed_miniLM \
+  --input-csv llm_phishing_fixed.csv --text-col text \
+  --aggregate p90 --topk 20 --steps 64 --batch-size 16 \
+  --out attributions.csv
 
