@@ -16,12 +16,9 @@ python -V
 python -c "import numpy; print('NumPy', numpy.__version__)"
 
 # Run your code
-python pro_train_single.py \
-  --csv Emails.csv \
-  --subject-col Subject \
-  --body-col Body \
-  --label-col Type \
-  --pos-label Phishing \
-  --outdir ./artifacts_single \
-  --test-size 0.2
 
+python pro_train_embed.py \
+  --input Emails.csv \
+  --outdir models/mailbench_v1 \
+  --label-from Type \
+  --positive-value Phishing

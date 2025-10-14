@@ -16,12 +16,10 @@ python -V
 python -c "import numpy; print('NumPy', numpy.__version__)"
 
 # Run your code
-python pro_train_single.py \
-  --csv Emails.csv \
-  --subject-col Subject \
-  --body-col Body \
-  --label-col Type \
-  --pos-label Phishing \
-  --outdir ./artifacts_single \
-  --test-size 0.2
+
+# After you've trained the model
+python pro_explain_ig_robust.py \
+  --model-dir models/mailbench_v1 \
+  --input /path/to/your.csv \
+  --global-top 50
 

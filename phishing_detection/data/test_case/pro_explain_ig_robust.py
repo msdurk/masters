@@ -264,6 +264,23 @@ def explain_texts(model_dir, texts, topk=15, n_steps=64, out_csv=None, batch_siz
         df.to_csv(out_csv, index=False)
     return df, np.array(per_row_probs, dtype=float)
 
+def top_keywords_across_dataset(df_attribs, topk=50, how="mean"):
+    """
+    Aggregate per-word attribution scores across all emails.
+    df_attribs: DataFrame from explain_texts (columns: text, unit, score, type)
+    topk: how many keywords to return
+    how: 'mean' or 'sum' aggregation
+    """
+    if df_attribs.empty:
+        return pd.DataFrame(columns=["unit","score"])
+    if how == "mean":
+        grouped = df_attribs.groupby("unit")["score"].mean()
+    else:
+        grouped = df_attribs.groupby("unit")["score"].sum()
+    top = grouped.sort_values(ascending=False).head(topk)
+    return top.reset_index()
+
+
 def _aggregate(scores, how="mean"):
     scores = np.asarray(scores, dtype=float)
     if scores.size == 0:
@@ -316,6 +333,17 @@ def main():
     df_out, probs = explain_texts(
         args.model_dir, texts, topk=args.topk, n_steps=args.steps, out_csv=args.out, batch_size=args.batch_size
     )
+    # Aggregate top keywords across dataset
+    topk_df = top_keywords_across_dataset(df_out, topk=50, how="mean")
+    print("\n=== Top 50 keywords across dataset (by mean attribution) ===")
+    print(topk_df.to_string(index=False))
+
+    # Save to CSV if --out was given
+    if args.out:
+        topk_path = args.out.replace(".csv", "_top50.csv")
+        topk_df.to_csv(topk_path, index=False)
+        print(f"Saved top 50 keywords to {topk_path}")
+
     dataset_score = _aggregate(probs, how=args.aggregate)
     print(f"\nDataset score ({args.aggregate} of prob_unwanted) = {dataset_score:.6f}  over N={len(probs)} rows")
 

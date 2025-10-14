@@ -16,12 +16,6 @@ python -V
 python -c "import numpy; print('NumPy', numpy.__version__)"
 
 # Run your code
-python pro_train_single.py \
-  --csv Emails.csv \
-  --subject-col Subject \
-  --body-col Body \
-  --label-col Type \
-  --pos-label Phishing \
-  --outdir ./artifacts_single \
-  --test-size 0.2
+
+python explain_utils_single.py --model artifacts_single/model.joblib --csv Emails.csv --global-top --top-n 30
 

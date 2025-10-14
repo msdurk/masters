@@ -16,12 +16,12 @@ python -V
 python -c "import numpy; print('NumPy', numpy.__version__)"
 
 # Run your code
-python pro_train_single.py \
-  --csv Emails.csv \
-  --subject-col Subject \
-  --body-col Body \
-  --label-col Type \
-  --pos-label Phishing \
-  --outdir ./artifacts_single \
-  --test-size 0.2
 
+python email_type_classifier.py \
+  --data Emails.csv \
+  --train \
+  --binary \
+  --positive-label "Phishing" \
+  --negative-label-name "Other" \
+  --ignore-labels "Unknown,NA" \
+  --undersample-neg 5000
