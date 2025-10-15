@@ -330,25 +330,18 @@ def debug_read_dataset(csv_path: str) -> pd.DataFrame:
     """
     print(f"[read_dataset] Trying to load: {csv_path}")
     df = read_dataset(csv_path)
-    print("
-[read_dataset] Loaded!")
+    print("[read_dataset] Loaded!")
     print(f"Shape: {df.shape[0]} rows x {df.shape[1]} columns")
     print(f"Columns: {list(df.columns)}")
-    print("
-Dtypes:
-", df.dtypes)
+    print("Dtypes:", df.dtypes)
 
     # Show a tiny preview
     with pd.option_context('display.max_colwidth', 120, 'display.width', 120):
-        print("
-Head(5):
-", df.head(5))
+        print("Head(5):", df.head(5))
 
     # Null diagnostics
     nulls = df.isna().mean().sort_values(ascending=False)
-    print("
-Null fraction by column (top 10):
-", nulls.head(10))
+    print("Null fraction by column (top 10):", nulls.head(10))
 
     # Basic heuristic check for separators left in the text (commas/semicolons/pipes)
     sample_cols = [c for c in df.columns if df[c].dtype == object][:5]
@@ -357,9 +350,7 @@ Null fraction by column (top 10):
         for c in sample_cols:
             s = df[c].astype(str).head(200).str.contains(r"[,;|	]", regex=True, na=False).mean()
             suspicious[c] = float(s)
-        print("
-Heuristic: fraction of sample cells containing delimiters (might indicate bad parsing):
-", suspicious)
+        print("Heuristic: fraction of sample cells containing delimiters (might indicate bad parsing):", suspicious)
 
     return df
 
@@ -373,8 +364,7 @@ def debug_combine_text_columns(df: pd.DataFrame, target_col: str = "Type", show_
         print(f"[combine_text_columns] WARNING: target column '{target_col}' not found.")
 
     combined = combine_text_columns(df)
-    print("
-[combine_text_columns] Combined text created.")
+    print("[combine_text_columns] Combined text created.")
     stats = _text_stats(combined)
     print("Stats:")
     for k, v in stats.items():
@@ -385,15 +375,12 @@ def debug_combine_text_columns(df: pd.DataFrame, target_col: str = "Type", show_
         y = df[target_col].astype(str).fillna("")
         # Show label distribution
         dist = y.value_counts(normalize=True).head(20)
-        print("
-Label distribution (top 20):
-", dist)
+        print("Label distribution (top 20):", dist)
 
         # Show a few random (text, label) examples
         rng = np.random.default_rng(random_state)
         idx = rng.choice(len(df), size=min(show_samples, len(df)), replace=False)
-        print("
-Sample combined text + label pairs:")
+        print("Sample combined text + label pairs:")
         for i in idx:
             t = combined.iloc[int(i)]
             lab = y.iloc[int(i)]
@@ -402,8 +389,7 @@ Sample combined text + label pairs:")
         # Show a few random text samples only
         rng = np.random.default_rng(random_state)
         idx = rng.choice(len(df), size=min(show_samples, len(df)), replace=False)
-        print("
-Sample combined texts:")
+        print("Sample combined texts:")
         for i in idx:
             t = combined.iloc[int(i)]
             print("- ", repr(t[:200] + ("..." if len(t) > 200 else "")))
@@ -411,11 +397,9 @@ Sample combined texts:")
     # Check for fully empty rows (after combination)
     empty_rows = combined.fillna("") == ""
     if empty_rows.any():
-        print(f"
-[combine_text_columns] WARNING: {int(empty_rows.sum())} empty combined texts.")
+        print(f"[combine_text_columns] WARNING: {int(empty_rows.sum())} empty combined texts.")
         empties = df.loc[empty_rows]
-        print("Example empty rows (up to 3):
-", empties.head(3))
+        print("Example empty rows (up to 3):", empties.head(3))
 
     return combined
 
@@ -528,8 +512,7 @@ def train_and_evaluate(
 
     y_pred = pipe.predict(X_test)
 
-    print("
-=== Evaluation ===")
+    print("=== Evaluation ===")
     acc = accuracy_score(y_test_enc, y_pred)
     print(f"Accuracy: {acc:.4f}")
 
@@ -557,19 +540,13 @@ def train_and_evaluate(
         f1m = f1_score(y_test_enc, y_pred, average="macro")
         print(f"F1 (macro): {f1m:.4f}")
         target_names = [str(c) for c in le.classes_]
-        print("
-Classification Report:
-", classification_report(y_test_enc, y_pred, target_names=target_names))
-        print("Confusion Matrix:
-", confusion_matrix(y_test_enc, y_pred))
+        print("Classification Report:", classification_report(y_test_enc, y_pred, target_names=target_names))
+        print("Confusion Matrix:", confusion_matrix(y_test_enc, y_pred))
     else:
         f1m = f1_score(y_test_enc, y_pred, average="macro")
         print(f"F1 (macro): {f1m:.4f}")
-        print("
-Classification Report:
-", classification_report(y_test_enc, y_pred, target_names=le.classes_))
-        print("Confusion Matrix:
-", confusion_matrix(y_test_enc, y_pred))
+        print("Classification Report:", classification_report(y_test_enc, y_pred, target_names=le.classes_))
+        print("Confusion Matrix:", confusion_matrix(y_test_enc, y_pred))
 
     # Persist pipeline + label encoder + metadata
     bundle = {
@@ -583,8 +560,7 @@ Classification Report:
         "ignore_labels": ignore_labels or [],
     }
     joblib.dump(bundle, save_path)
-    print(f"
-Saved trained model to: {save_path}")
+    print(f"Saved trained model to: {save_path}")
 
 
 def main(argv: Optional[List[str]] = None):  # type: ignore[override]
@@ -633,8 +609,7 @@ def main(argv: Optional[List[str]] = None):  # type: ignore[override]
         )
         if args.predict:
             preds = predict_labels([args.predict], model_path=args.save_path)
-            print(f"
-Prediction: {preds[0]}")
+            print(f"Prediction: {preds[0]}")
             if args.proba:
                 try:
                     p = predict_positive_proba([args.predict], model_path=args.save_path)[0]

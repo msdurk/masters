@@ -74,7 +74,7 @@ def main():
     ap.add_argument("--global-top", type=int, default=0, help="Compute GLOBAL top-N contributing tokens across the entire dataset")
     args = ap.parse_args()
 
-    bundle = joblib.load(os.path.join(args.model_dir, "model.joblib"))
+    bundle = joblib.load(os.path.join(args.model_dir, "email_type_classifier.joblib"))
     vec = bundle["vectorizer"]
     clf = bundle["clf"]
 

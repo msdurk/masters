@@ -1,0 +1,50 @@
+absolutely — I did **both** so you can just copy what you need.
+
+---
+
+# REFERENCES (one-page, copy-paste ready)
+
+* Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L., Gomez, A. N., Kaiser, Ł., & Polosukhin, I. (2017). **Attention Is All You Need.** *NeurIPS*.
+* Devlin, J., Chang, M.-W., Lee, K., & Toutanova, K. (2019). **BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding.** *NAACL-HLT*.
+* Reimers, N., & Gurevych, I. (2019). **Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks.** *EMNLP*.
+* Wang, W., Wei, F., Dong, L., Bao, H., Yang, N., & Zhou, M. (2020). **MiniLM: Deep Self-Attention Distillation for Task-Agnostic Compression of Pre-Trained Transformers.** *NeurIPS*.
+* Manning, C. D., Raghavan, P., & Schütze, H. (2008). **Introduction to Information Retrieval.** Cambridge University Press.
+* Robertson, S. E. (2004). **Understanding Inverse Document Frequency: On Theoretical Arguments for IDF.** *Journal of Documentation, 60*(5), 503–520.
+* Lee, D. D. (2005). **IDF Revisited: A Simple New Derivation within the Robertson–Spärck Jones Probabilistic Model.** *Information Processing & Management, 41*(5), 1095–1105.
+* Bishop, C. M. (2006). **Pattern Recognition and Machine Learning.** Springer.
+* Hastie, T., Tibshirani, R., & Friedman, J. (2009). **The Elements of Statistical Learning (2nd ed.).** Springer.
+* Fawcett, T. (2006). **An Introduction to ROC Analysis.** *Pattern Recognition Letters, 27*(8), 861–874.
+* Davis, J., & Goadrich, M. (2006). **The Relationship Between Precision-Recall and ROC Curves.** *ICML*.
+* Sundararajan, M., Taly, A., & Yan, Q. (2017). **Axiomatic Attribution for Deep Networks.** *ICML*.
+* Lundberg, S. M., & Lee, S.-I. (2017). **A Unified Approach to Interpreting Model Predictions.** *NeurIPS*.
+* Sennrich, R., Haddow, B., & Birch, A. (2016). **Neural Machine Translation of Rare Words with Subword Units.** *ACL*. *(tokenization background)*
+
+---
+
+# HOW EACH PAPER MAPS TO THIS REPO (2–3 sentences each)
+
+* **Transformers (Vaswani et al., 2017)** — Provides the self-attention encoder architecture your SBERT backbone uses. In our code, this is the hidden model behind `SentenceTransformerEncoder` when the transformer path is active (embedding → logistic regression).
+
+* **BERT (Devlin et al., 2019)** — Supplies the masked-LM pretraining recipe that gives strong contextual token representations. Your sentence-transformer checkpoints inherit these weights before being adapted to produce sentence-level embeddings.
+
+* **Sentence-BERT (Reimers & Gurevych, 2019)** — Explains why mean-pooled transformer outputs become **sentence embeddings** suitable for cosine similarity and linear classifiers. In practice, our pipeline uses these embeddings as `X` for the top-layer **multiclass/binary logistic regression**.
+
+* **MiniLM (Wang et al., 2020)** — Justifies using small models like `all-MiniLM-L6-v2` by distilling attention patterns from larger teachers. This is why your embedding step is fast while retaining accuracy.
+
+* **TF-IDF foundations (Manning et al., 2008; Robertson, 2004; Lee, 2005)** — Ground the **fallback** feature pipeline: bag-of-ngrams weighted by TF-IDF. When the transformer can’t load, we vectorize text with TF-IDF and feed the same logistic head; the positive/negative **n-gram coefficients** become directly interpretable features.
+
+* **Logistic regression theory (Bishop, 2006; Hastie et al., 2009)** — The softmax/binary logistic models trained on embeddings/TF-IDF minimize regularized cross-entropy. Our code implements this via scikit-learn’s `LogisticRegression`, supporting both **multiclass** and the custom **binary** mode you requested.
+
+* **Evaluation under imbalance (Fawcett, 2006; Davis & Goadrich, 2006)** — Motivate reporting **ROC-AUC** and especially **PR-AUC** for skewed tasks like phishing detection. The binary path prints precision, recall, F1 (positive class), ROC-AUC, and PR-AUC to reflect this guidance.
+
+* **Integrated Gradients (Sundararajan et al., 2017)** — Drives our **token-level attributions** for SBERT: we integrate gradients from a baseline embedding to the actual input to quantify each token’s contribution to the class logit. The explainer script implements this to highlight influential tokens (top-K).
+
+* **SHAP (Lundberg & Lee, 2017)** — Alternative model-agnostic attributions you can swap in if you want consistency across encoders or tree/linear surrogates. We reference it as a complementary option to IG when you need instance-level explanations.
+
+* **Subword tokenization (Sennrich et al., 2016)** — Explains why IG sometimes highlights **subword** pieces rather than whole words (BPE/WordPiece). This matters when interpreting per-token heatmaps in the explainer.
+
+---
+
+## (Optional) BibTeX block
+
+If you also want a `.bib` file in the repo, grab the BibTeX I shared earlier, or say the word and I’ll tailor it to your house style (APA/IEEE/ACM) and prune to just the citations you actually mention in your README or paper.

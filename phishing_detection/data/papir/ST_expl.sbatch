@@ -17,11 +17,17 @@ python -c "import numpy; print('NumPy', numpy.__version__)"
 
 # Run your code
 
-python ST_trainer.py \
+# semicolon-delimited + latin-1
+python ST_expl.py \
+  --model models/email_type_classifier.joblib \
+  --ig-corpus \
+  --class "Phishing" \
   --data Emails.csv \
-  --train \
-  --binary \
-  --positive-label "Phishing" \
-  --negative-label-name "Other" \
-  --ignore-labels "Unknown,NA" \
-  --undersample-neg 5000
+  --k 50 \
+  --steps 16 \
+  --limit 200 \
+  --predicted-only \
+  --prob-thresh 0.7 \
+  --save-csv ig_top_tokens.csv
+
+ 

@@ -19,7 +19,7 @@ python -c "import numpy; print('NumPy', numpy.__version__)"
 
 # After you've trained the model
 python pro_explain_ig_robust.py \
-  --model-dir models/mailbench_v1 \
-  --input /path/to/your.csv \
+  --model-dir models \
+  --input Emails.csv \
   --global-top 50
 
