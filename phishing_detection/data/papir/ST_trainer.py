@@ -596,6 +596,8 @@ def main(argv: Optional[List[str]] = None):  # type: ignore[override]
         df = read_dataset(args.data)
         debug_combine_text_columns(df)
         return
+    if args.binary:
+        args.save_path = "models/email_type_classifier_binary.joblib"
 
     # Default behavior unchanged
     if args.train:
