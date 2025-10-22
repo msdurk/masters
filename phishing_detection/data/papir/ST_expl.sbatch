@@ -19,7 +19,7 @@ python -c "import numpy; print('NumPy', numpy.__version__)"
 
 # semicolon-delimited + latin-1
 python ST_expl.py \
-  --model models/email_type_classifier.joblib \
+  --model models/email_type_classifier_binary.joblib \
   --ig-corpus \
   --class "Phishing" \
   --data Emails.csv \
@@ -28,6 +28,8 @@ python ST_expl.py \
   --limit 200 \
   --predicted-only \
   --prob-thresh 0.7 \
-  --save-csv ig_top_tokens.csv
+  --save-csv-toward ig_words_toward.csv \
+  --save-csv-away   ig_words_away.csv \
+  --binary 
 
  

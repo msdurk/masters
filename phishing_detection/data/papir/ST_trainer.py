@@ -175,53 +175,6 @@ def build_pipeline(model_name: str = DEFAULT_ST_MODEL) -> Pipeline:
     return pipe
 
 
-def train_and_evaluate(
-    data_path: str,
-    model_name: str = DEFAULT_ST_MODEL,
-    test_size: float = 0.2,
-    random_state: int = 42,
-    save_path: str = SAVED_MODEL_PATH,
-):
-    df = read_dataset(data_path)
-    if "Type" not in df.columns:
-        raise ValueError("Dataset must contain a 'Type' column as the target.")
-
-    y = df["Type"].astype(str).fillna("")
-    X = combine_text_columns(df)
-
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=test_size, random_state=random_state, stratify=y if y.nunique() > 1 else None
-    )
-
-    # Label encode targets for robustness
-    le = LabelEncoder()
-    y_train_enc = le.fit_transform(y_train)
-    y_test_enc = le.transform(y_test)
-
-    pipe = build_pipeline(model_name)
-    pipe.fit(X_train, y_train_enc)
-
-    y_pred = pipe.predict(X_test)
-
-    acc = accuracy_score(y_test_enc, y_pred)
-    f1m = f1_score(y_test_enc, y_pred, average="macro")
-
-    print("\n=== Evaluation ===")
-    print(f"Accuracy: {acc:.4f}")
-    print(f"F1 (macro): {f1m:.4f}")
-    print("\nClassification Report:\n", classification_report(y_test_enc, y_pred, target_names=le.classes_))
-    print("Confusion Matrix:\n", confusion_matrix(y_test_enc, y_pred))
-
-    # Persist pipeline + label encoder together
-    bundle = {
-        "pipeline": pipe,
-        "label_encoder": le,
-        "model_name": model_name,
-        "columns": df.columns.tolist(),
-    }
-    joblib.dump(bundle, save_path)
-    print(f"\nSaved trained model to: {save_path}")
-
 
 def load_model(path: str = SAVED_MODEL_PATH):
     if not os.path.exists(path):
@@ -245,61 +198,6 @@ def predict_labels(texts: List[str], model_path: str = SAVED_MODEL_PATH) -> List
     preds = le.inverse_transform(preds_enc)
     return preds.tolist()
 
-
-def main(argv: Optional[List[str]] = None):
-    parser = argparse.ArgumentParser(description="Email Type Classifier")
-    parser.add_argument("--data", type=str, default="Emails.csv", help="Path to CSV with a 'Type' column")
-    parser.add_argument("--model-name", type=str, default=DEFAULT_ST_MODEL, help="SentenceTransformer model name")
-    parser.add_argument("--train", action="store_true", help="Train and evaluate the model")
-    parser.add_argument("--test-size", type=float, default=0.2, help="Holdout test size fraction")
-    parser.add_argument("--random-state", type=int, default=42, help="Random seed")
-    parser.add_argument("--save-path", type=str, default=SAVED_MODEL_PATH, help="Where to save the trained model")
-    parser.add_argument("--predict", type=str, default=None, help="Predict the Type for a single email text")
-    parser.add_argument("--predict-file", type=str, default=None, help="Path to text file with one email per line to predict")
-
-    args = parser.parse_args(argv)
-
-    if args.train:
-        train_and_evaluate(
-            data_path=args.data,
-            model_name=args.model_name,
-            test_size=args.test_size,
-            random_state=args.random_state,
-            save_path=args.save_path,
-            binary=args.binary,
-            positive_label=args.positive_label,
-            negative_label_name=args.negative_label_name,
-            ignore_labels=ignore_list,
-            undersample_neg=args.undersample_neg,
-        )
-        # If user also provided a prediction text during the same run
-        if args.predict:
-            preds = predict_labels([args.predict], model_path=args.save_path)
-            print(f"\nPrediction: {preds[0]}")
-        if args.predict_file and os.path.exists(args.predict_file):
-            with open(args.predict_file, "r", encoding="utf-8") as f:
-                lines = [line.strip() for line in f if line.strip()]
-            preds = predict_labels(lines, model_path=args.save_path)
-            for t, p in zip(lines, preds):
-                print(f"PRED\t{p}\t{t[:80]}{'...' if len(t) > 80 else ''}")
-        return
-
-    if args.predict is not None or args.predict_file is not None:
-        texts: List[str] = []
-        if args.predict is not None:
-            texts.append(args.predict)
-        if args.predict_file is not None:
-            if not os.path.exists(args.predict_file):
-                sys.exit(f"Predict file not found: {args.predict_file}")
-            with open(args.predict_file, "r", encoding="utf-8") as f:
-                texts.extend([line.strip() for line in f if line.strip()])
-        preds = predict_labels(texts, model_path=args.save_path)
-        for t, p in zip(texts, preds):
-            print(f"PRED\t{p}\t{t[:80]}{'...' if len(t) > 80 else ''}")
-        return
-
-    # If no flags are given, print help
-    parser.print_help()
 
 
 # -----------------------------
@@ -413,9 +311,6 @@ def _add_debug_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--check-combine", action="store_true", help="Run combine_text_columns diagnostics and exit")
 
 
-# Patch parser in main by wrapping original main
-_original_main = main
-
 
 # -----------------------------
 # Binary classification helpers
@@ -489,9 +384,13 @@ def train_and_evaluate(
     if binary:
         if not positive_label:
             raise ValueError("--positive-label is required when --binary is set.")
-        df2, y = _binarize_targets(df, positive_label=positive_label, negative_label_name=negative_label_name, ignore_labels=ignore_labels)
+        df2, y = _binarize_targets(
+            df,
+            positive_label=positive_label,
+            negative_label_name=negative_label_name,
+            ignore_labels=ignore_labels
+        )
         X = combine_text_columns(df2)
-        # Optional undersampling for speed / imbalance control
         X, y = _maybe_undersample_neg(X, y, negative_label_name, undersample_neg)
     else:
         if "Type" not in df.columns:
@@ -500,55 +399,93 @@ def train_and_evaluate(
         X = combine_text_columns(df)
 
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=test_size, random_state=random_state, stratify=y if y.nunique() > 1 else None
+        X, y, test_size=test_size, random_state=random_state,
+        stratify=y if pd.Series(y).nunique() > 1 else None
     )
 
     le = LabelEncoder()
     y_train_enc = le.fit_transform(y_train)
-    y_test_enc = le.transform(y_test)
+    y_test_enc  = le.transform(y_test)
 
     pipe = build_pipeline(model_name)
     pipe.fit(X_train, y_train_enc)
 
-    y_pred = pipe.predict(X_test)
+    y_pred  = pipe.predict(X_test)
 
-    print("=== Evaluation ===")
-    acc = accuracy_score(y_test_enc, y_pred)
-    print(f"Accuracy: {acc:.4f}")
+    # ====== BINARY-ONLY DIAGNOSTICS ======
+    if binary:
+        if len(le.classes_) != 2:
+            raise RuntimeError(
+                f"Binary diagnostics require exactly 2 classes after mapping; got {le.classes_}"
+            )
 
-    if binary and len(le.classes_) == 2:
-        # Positive index
-        pos_idx = int(np.where(le.classes_ == positive_label)[0][0])
-        # Probabilities
-        y_proba = pipe.predict_proba(X_test)[:, pos_idx]
-        # Binary metrics (positive class)
-        prec, rec, f1, _ = precision_recall_fscore_support(y_test_enc, y_pred, average="binary", pos_label=pos_idx, zero_division=0)
+        classes = list(le.classes_)
+        pos_name = positive_label
+        neg_name = negative_label_name
+
+        if pos_name not in classes or neg_name not in classes:
+            # fall back to whichever two labels exist (keeps code safe if names differ)
+            pos_idx = int(np.where(np.array(classes) == pos_name)[0][0]) if pos_name in classes else 1
+            neg_idx = 1 - pos_idx
+            pos_name, neg_name = classes[pos_idx], classes[neg_idx]
+        else:
+            pos_idx = classes.index(pos_name)
+            neg_idx = classes.index(neg_name)
+
+        # try probabilities for AUC metrics
         try:
-            roc = roc_auc_score((y_test_enc == pos_idx).astype(int), y_proba)
+            y_proba_pos = pipe.predict_proba(X_test)[:, pos_idx]
         except Exception:
-            roc = float("nan")
-        try:
-            prauc = average_precision_score((y_test_enc == pos_idx).astype(int), y_proba)
-        except Exception:
-            prauc = float("nan")
-        print(f"Precision (pos={positive_label}): {prec:.4f}")
-        print(f"Recall    (pos={positive_label}): {rec:.4f}")
-        print(f"F1        (pos={positive_label}): {f1:.4f}")
-        print(f"ROC-AUC: {roc:.4f}")
-        print(f"PR-AUC : {prauc:.4f}")
-        # Also macro-F1 for context
-        f1m = f1_score(y_test_enc, y_pred, average="macro")
-        print(f"F1 (macro): {f1m:.4f}")
-        target_names = [str(c) for c in le.classes_]
-        print("Classification Report:", classification_report(y_test_enc, y_pred, target_names=target_names))
-        print("Confusion Matrix:", confusion_matrix(y_test_enc, y_pred))
+            y_proba_pos = None
+
+        # core binary metrics (pos vs other)
+        acc = accuracy_score(y_test_enc, y_pred)
+        prec, rec, f1, _ = precision_recall_fscore_support(
+            y_test_enc, y_pred, average="binary", pos_label=pos_idx, zero_division=0
+        )
+
+        print("\n=== Binary Diagnostics ({} vs {}) ===".format(pos_name, neg_name))
+        print(f"Accuracy              : {acc:.4f}")
+        print(f"Precision (pos={pos_name}): {prec:.4f}")
+        print(f"Recall    (pos={pos_name}): {rec:.4f}")
+        print(f"F1        (pos={pos_name}): {f1:.4f}")
+
+        if y_proba_pos is not None:
+            try:
+                roc  = roc_auc_score((y_test_enc == pos_idx).astype(int), y_proba_pos)
+                prau = average_precision_score((y_test_enc == pos_idx).astype(int), y_proba_pos)
+                print(f"ROC-AUC               : {roc:.4f}")
+                print(f"PR-AUC                : {prau:.4f}")
+            except Exception:
+                pass
+
+        # 2×2 confusion matrix with explicit label order [pos, neg]
+        cm = confusion_matrix(y_test_enc, y_pred, labels=[pos_idx, neg_idx])
+        # rows = actual, cols = predicted
+        tp, fn = cm[0, 0], cm[0, 1]
+        fp, tn = cm[1, 0], cm[1, 1]
+
+        print("\nConfusion Matrix (rows=actual, cols=predicted)")
+        print(f"             Pred {pos_name:>8} | Pred {neg_name:>8}")
+        print(f"Actual {pos_name:>8}: {tp:10d} | {fn:12d}")
+        print(f"Actual {neg_name:>8}: {fp:10d} | {tn:12d}")
+
+        # Optional: binary-only classification report (just the two classes, in [pos, neg] order)
+        print("\nClassification Report (binary only):")
+        print(classification_report(
+            y_test_enc, y_pred,
+            labels=[pos_idx, neg_idx],
+            target_names=[pos_name, neg_name],
+            zero_division=0
+        ))
+
     else:
-        f1m = f1_score(y_test_enc, y_pred, average="macro")
-        print(f"F1 (macro): {f1m:.4f}")
-        print("Classification Report:", classification_report(y_test_enc, y_pred, target_names=le.classes_))
-        print("Confusion Matrix:", confusion_matrix(y_test_enc, y_pred))
+        # (unchanged) multiclass summary if you ever call without --binary
+        print("\n=== Multiclass Evaluation ===")
+        print(classification_report(y_test_enc, y_pred, target_names=[str(c) for c in le.classes_], zero_division=0))
+        print("Confusion Matrix:\n", confusion_matrix(y_test_enc, y_pred))
 
-    # Persist pipeline + label encoder + metadata
+    # ====== persist bundle as before ======
     bundle = {
         "pipeline": pipe,
         "label_encoder": le,
@@ -560,7 +497,8 @@ def train_and_evaluate(
         "ignore_labels": ignore_labels or [],
     }
     joblib.dump(bundle, save_path)
-    print(f"Saved trained model to: {save_path}")
+    print(f"\nSaved trained model to: {save_path}")
+
 
 
 def main(argv: Optional[List[str]] = None):  # type: ignore[override]
@@ -608,6 +546,11 @@ def main(argv: Optional[List[str]] = None):  # type: ignore[override]
             test_size=args.test_size,
             random_state=args.random_state,
             save_path=args.save_path,
+            binary=args.binary,
+            positive_label=args.positive_label,
+            negative_label_name=args.negative_label_name,
+            ignore_labels=args.ignore_labels,
+            undersample_neg=args.undersample_neg
         )
         if args.predict:
             preds = predict_labels([args.predict], model_path=args.save_path)

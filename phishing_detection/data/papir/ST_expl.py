@@ -244,7 +244,7 @@ def _mean_pool(last_hidden: 'torch.Tensor', attention_mask: 'torch.Tensor') -> '
 def _l2_normalize(x: 'torch.Tensor', eps: float = 1e-12) -> 'torch.Tensor':
     return x / (x.norm(dim=-1, keepdim=True) + eps)
 
-def integrated_gradients_tokens(bundle, text: str, class_name: str, steps: int = 50):
+def integrated_gradients_tokens(bundle, text: str, class_name: str, steps: int = 50, binary=False):
     """Compute token-level IG for SBERT pipelines, returning signed attributions and encoding."""
     if torch is None:
         raise RuntimeError("torch/transformers are required for IG.")
@@ -291,7 +291,29 @@ def integrated_gradients_tokens(bundle, text: str, class_name: str, steps: int =
         out_alpha = enc(inputs_embeds=emb_alpha, attention_mask=attention_mask)
         pooled_alpha = _mean_pool(out_alpha.last_hidden_state, attention_mask)
         z_alpha = _l2_normalize(pooled_alpha)
-        logit_k = (W[kidx] @ z_alpha.squeeze(0)) + b[kidx]
+        # before the IG loop (or once per call), prep shapes
+        W = torch.as_tensor(W, dtype=torch.float32)      # from your model/clf
+        b = torch.as_tensor(b, dtype=torch.float32)
+
+        if W.ndim == 1:  # (H,) -> (1, H)
+            W = W.unsqueeze(0)
+        if b.ndim == 0:  # scalar -> (1,)
+            b = b.reshape(1)
+
+        # find the index of the requested class name as you already do
+        # kidx = int(np.where(le.classes_ == class_name)[0][0])  # example
+
+        # ... inside your IG loop, with z_alpha of shape (1, H) or (H,)
+        zv = z_alpha.squeeze(0)  # (H,)
+
+        if binary:
+            # single-logit binary: logit is for the positive class
+            base_logit = (W[0] @ zv) + b[0]
+            logit_k = base_logit if kidx == 1 else -base_logit
+        else:
+            # multi-logit / multi-head as before
+            logit_k = (W[kidx] @ zv) + (b.reshape(-1)[kidx] if b.numel() > 1 else b.reshape(-1)[0])
+
         logit_k.backward()
 
         total_grads += emb_alpha.grad.detach()
@@ -392,6 +414,7 @@ def ig_corpus_top_words_signed(
     class_name: str,
     k: int = 50,
     steps: int = 24,
+    binary = False,
     limit: Optional[int] = None,
     sample_p: float = 1.0,
     predicted_only: bool = True,
@@ -461,7 +484,7 @@ def ig_corpus_top_words_signed(
 
     for i in idx_all:
         txt = str(X.iloc[i])
-        ig = integrated_gradients_tokens(bundle, txt, class_name, steps=steps)
+        ig = integrated_gradients_tokens(bundle, txt, class_name, steps=steps, binary=binary)
         # merge to words
         words = aggregate_word_level(txt, ig, tok)
         for w, tot_abs, tot_signed, cnt in words:
@@ -564,7 +587,7 @@ def ig_corpus_top_tokens(
 
     for i in idx_all:
         txt = str(X.iloc[i])
-        res = integrated_gradients_tokens(bundle, txt, class_name, steps=steps)
+        res = integrated_gradients_tokens(bundle, txt, class_name, steps=steps, binary=binary)
         toks = res.get("tokens")
         imps = res.get("importances")
         for t, v in zip(toks, imps):
@@ -643,6 +666,7 @@ def main():
     ap.add_argument("--no-stop", action="store_true", help="Do not strip stopwords in ig-corpus aggregation")
     ap.add_argument("--save-csv-toward", type=str, default=None, help="CSV path for toward words")
     ap.add_argument("--save-csv-away", type=str, default=None, help="Where to save the aggregated Top-N as CSV (ig-corpus)")
+    ap.add_argument("--binary", action="store_true", help="Treat the classifier as single-logit binary (use +logit for class 1, -logit for class 0).")
 
     args = ap.parse_args()
 
@@ -665,6 +689,7 @@ def main():
         steps=args.steps,
         limit=args.limit,
         sample_p=args.sample_p,
+        binary=args.binary,
         predicted_only=args.predicted_only,
         prob_thresh=args.prob_thresh,
         min_len=args.min_len,
@@ -712,7 +737,7 @@ def main():
             raise SystemExit("--class is required with --ig")
         if not args.text:
             raise SystemExit("--text is required with --ig")
-        res = integrated_gradients_tokens(bundle, args.text, args.class_name, steps=args.steps)
+        res = integrated_gradients_tokens(bundle, args.text, args.class_name, steps=args.steps, binary=args.binary)
 
         # Word-level rollup (merge subwords)
         model_name = bundle.get("model_name", "sentence-transformers/all-MiniLM-L6-v2")
