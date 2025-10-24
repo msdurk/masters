@@ -1,0 +1,51 @@
+[Top +50] features for class = phishing
+  + monkey: 3.7723
+  + monkey org: 3.4973
+  + link: 3.2582
+  + your: 3.1015
+  + jose: 2.9916
+  + jose monkey: 2.3506
+  + following link: 2.1935
+  + opportunity: 1.9852
+  + will: 1.9519
+  + link com: 1.9470
+  + the following: 1.9321
+  + link https: 1.9276
+  + we have: 1.8991
+  + we: 1.8751
+  + following: 1.8218
+  + click on: 1.6827
+  + account: 1.6811
+  + we are: 1.6083
+  + 2022: 1.5524
+  + on the: 1.4783
+  + recently: 1.3513
+  + secure: 1.3400
+  + payment: 1.3378
+  + hello: 1.3071
+  + individuals: 1.2953
+  + exclusive: 1.2422
+  + below: 1.2389
+  + 2021: 1.2311
+  + document: 1.2280
+  + customer: 1.1579
+  + you will: 1.1481
+  + 2020: 1.1408
+  + update: 1.1348
+  + confirm: 1.0650
+  + org: 1.0609
+  + anderson: 1.0314
+  + reply: 1.0125
+  + dear customer: 1.0095
+  + has: 1.0083
+  + and am: 1.0057
+  + de: 0.9946
+  + been: 0.9923
+  + remember: 0.9911
+  + messages: 0.9856
+  + our secure: 0.9731
+  + your account: 0.9709
+  + password: 0.9652
+  + will be: 0.9517
+  + update your: 0.9304
+  + kindly: 0.9198

@@ -18,10 +18,10 @@ python -c "import numpy; print('NumPy', numpy.__version__)"
 # Run your code
 
 python ST_trainer.py \
-  --data Emails.csv \
+  --data merged_emails.csv \
   --train \
   --binary \
-  --positive-label "Phishing" \
+  --positive-label "phishing" \
   --negative-label-name "Other" \
   --ignore-labels "Unknown,NA" \
   --undersample-neg 5000

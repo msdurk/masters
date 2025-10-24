@@ -17,20 +17,12 @@ python -c "import numpy; print('NumPy', numpy.__version__)"
 
 # Run your code
 
-# semicolon-delimited + latin-1
-python ST_expl.py \
-  --model models/binary_email_type_classifier.joblib \
-  --ig-corpus-words \
-  --class "phishing" \
+python ST_trainer.py \
   --data merged_emails.csv \
-  --k 50 \
-  --steps 16 \
-  --predicted-only \
-  --prob-thresh 0.6 \
-  --save-csv-toward ig_words_toward.csv \
-  --save-csv-away   ig_words_away.csv \
-  --binary 
-
-
-
- 
+  --train \
+  --binary \
+  --positive-label "phishing" \
+  --negative-label-name "Other" \
+  --ignore-labels "Unknown,NA" \
+  --undersample-neg 5000 \
+  --model-name tfidf

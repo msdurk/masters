@@ -19,17 +19,11 @@ python -c "import numpy; print('NumPy', numpy.__version__)"
 
 # semicolon-delimited + latin-1
 python ST_expl.py \
-  --model models/binary_email_type_classifier.joblib \
-  --ig-corpus-words \
-  --class "phishing" \
-  --data merged_emails.csv \
-  --k 50 \
-  --steps 16 \
-  --predicted-only \
-  --prob-thresh 0.6 \
-  --save-csv-toward ig_words_toward.csv \
-  --save-csv-away   ig_words_away.csv \
-  --binary 
+  --model models/binary_tfidf.joblib \
+  --top-ngrams \
+  --class phishing \
+  --k 50
+
 
 
 

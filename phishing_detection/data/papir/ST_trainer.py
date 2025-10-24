@@ -166,6 +166,16 @@ def combine_text_columns(df: pd.DataFrame) -> pd.Series:
 
 
 def build_pipeline(model_name: str = DEFAULT_ST_MODEL) -> Pipeline:
+    if model_name.lower() == "tfidf":
+        from sklearn.feature_extraction.text import TfidfVectorizer
+        encoder = TfidfVectorizer(ngram_range=(1, 2), min_df=2)
+        clf = LogisticRegression(max_iter=2000, n_jobs=None, class_weight="balanced")
+        pipe = Pipeline([
+            ("tfidf", encoder),
+            ("clf", clf),
+        ])
+        return pipe
+
     encoder = SentenceTransformerEncoder(model_name=model_name)
     clf = LogisticRegression(max_iter=2000, n_jobs=None, class_weight="balanced")
     pipe = Pipeline([
@@ -397,6 +407,8 @@ def train_and_evaluate(
             raise ValueError("Dataset must contain a 'Type' column as the target.")
         y = df["Type"].astype(str).fillna("")
         X = combine_text_columns(df)
+    print("Label distribution before split:", pd.Series(y).value_counts())
+
 
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=test_size, random_state=random_state,
@@ -535,7 +547,10 @@ def main(argv: Optional[List[str]] = None):  # type: ignore[override]
         debug_combine_text_columns(df)
         return
     if args.binary:
-        args.save_path = "models/email_type_classifier_binary.joblib"
+        if args.model_name != DEFAULT_ST_MODEL:
+            args.save_path = f"models/binary_{args.model_name}.joblib"
+        else:
+            args.save_path = "models/binary_email_type_classifier.joblib"
 
     # Default behavior unchanged
     if args.train:

@@ -48,6 +48,7 @@ from typing import Tuple
 import numpy as np
 import joblib
 
+from sklearn.feature_extraction.text import TfidfVectorizer
 # -------------------------------------------------
 # Unpickle compatibility shim for custom transformer
 # -------------------------------------------------
@@ -147,14 +148,29 @@ def is_tfidf_pipeline(bundle) -> bool:
     embed = getattr(pipe, "named_steps", {}).get("embed", None)
     return hasattr(embed, "get_feature_names_out")
 
-def top_ngrams_for_class(bundle, class_name: str, k: int = 50) -> Tuple[List[Tuple[str, float]], List[Tuple[str, float]]]:
+def top_ngrams_for_class(
+    bundle,
+    class_name: str,
+    k: int = 50,
+    binary: bool = False,   # <-- new optional flag
+) -> Tuple[List[Tuple[str, float]], List[Tuple[str, float]]]:
     pipe = bundle["pipeline"]
     le = bundle["label_encoder"]
     clf = pipe.named_steps["clf"]
-    vec = pipe.named_steps["embed"]
 
-    if not hasattr(vec, "get_feature_names_out"):
-        raise ValueError("Top n-grams only apply when the model used TF-IDF fallback.")
+    # --- find the TF-IDF step robustly ---
+    if "tfidf" in pipe.named_steps:
+        vec = pipe.named_steps["tfidf"]
+    elif "embed" in pipe.named_steps:  # some pipelines name the text step 'embed'
+        vec = pipe.named_steps["embed"]
+    else:
+        vec = None
+        for _, step in pipe.named_steps.items():
+            if isinstance(step, TfidfVectorizer):
+                vec = step
+                break
+    if vec is None or not hasattr(vec, "get_feature_names_out"):
+        raise ValueError("Top n-grams only apply when the model used a TF-IDF vectorizer.")
 
     classes = list(le.classes_)
     if class_name not in classes:
@@ -162,13 +178,30 @@ def top_ngrams_for_class(bundle, class_name: str, k: int = 50) -> Tuple[List[Tup
     kidx = classes.index(class_name)
 
     vocab = np.array(vec.get_feature_names_out())
-    coefs = clf.coef_[kidx]  # shape [V]
+    coef_mat = clf.coef_
 
-    top_pos_idx = np.argsort(coefs)[-k:][::-1]
-    top_neg_idx = np.argsort(coefs)[:k]
+    # --- coefficient selection ---
+    # If binary flag is set, or the clf is effectively binary (single row),
+    # follow sklearn convention: coef_[0] corresponds to classes_[1] (positive class).
+    if binary or coef_mat.shape[0] == 1:
+        if len(classes) != 2:
+            raise ValueError(f"--binary specified but classifier has {len(classes)} classes: {classes}")
+        pos_label = classes[1]
+        pos_vec = coef_mat[0]
+        coefs = pos_vec if class_name == pos_label else -pos_vec
+    else:
+        # Multiclass: one row per class
+        coefs = coef_mat[kidx]
+
+    # --- rank features ---
+    order = np.argsort(coefs)  # ascending
+    top_pos_idx = order[::-1][:k]  # largest weights
+    top_neg_idx = order[:k]        # most negative weights
+
     top_pos = [(vocab[i], float(coefs[i])) for i in top_pos_idx]
     top_neg = [(vocab[i], float(coefs[i])) for i in top_neg_idx]
     return top_pos, top_neg
+
 
 # ---------------------------------------------
 # Path 2: Prototypes (both pipelines)
@@ -681,32 +714,32 @@ def main():
         if not args.data:
             raise SystemExit("--data CSV is required with --ig-corpus-words")
 
-    top_toward, top_away = ig_corpus_top_words_signed(
-        bundle=bundle,
-        data_path=args.data,
-        class_name=args.class_name,
-        k=args.k,
-        steps=args.steps,
-        limit=args.limit,
-        sample_p=args.sample_p,
-        binary=args.binary,
-        predicted_only=args.predicted_only,
-        prob_thresh=args.prob_thresh,
-        min_len=args.min_len,
-        strip_stop=(not args.no_stop),
-        save_csv_toward=args.save_csv_toward,
-        save_csv_away=args.save_csv_away,
-    )
-    print_signed(f"Top {args.k} WORDS pushing TOWARD '{args.class_name}' (dataset)", top_toward)
-    print_signed(f"Top {args.k} WORDS pushing AWAY from '{args.class_name}' (dataset)", top_away)
-    return
+        top_toward, top_away = ig_corpus_top_words_signed(
+            bundle=bundle,
+            data_path=args.data,
+            class_name=args.class_name,
+            k=args.k,
+            steps=args.steps,
+            limit=args.limit,
+            sample_p=args.sample_p,
+            binary=args.binary,
+            predicted_only=args.predicted_only,
+            prob_thresh=args.prob_thresh,
+            min_len=args.min_len,
+            strip_stop=(not args.no_stop),
+            save_csv_toward=args.save_csv_toward,
+            save_csv_away=args.save_csv_away,
+        )
+        print_signed(f"Top {args.k} WORDS pushing TOWARD '{args.class_name}' (dataset)", top_toward)
+        print_signed(f"Top {args.k} WORDS pushing AWAY from '{args.class_name}' (dataset)", top_away)
+        return
 
 
     # ---------- Top n-grams (TF-IDF only) ----------
     if args.top_ngrams:
         if not args.class_name:
             raise SystemExit("--class is required with --top-ngrams")
-        pos, neg = top_ngrams_for_class(bundle, args.class_name, k=args.k)
+        pos, neg = top_ngrams_for_class(bundle, args.class_name, k=args.k, binary=args.binary)
         print(f"\n[Top +{args.k}] features for class = {args.class_name}")
         for f, w in pos:
             print(f"  + {f}: {w:.4f}")
