@@ -28,7 +28,6 @@ import os
 import sys
 import json
 import warnings
-from typing import List, Optional
 
 import numpy as np
 import pandas as pd
@@ -39,6 +38,8 @@ from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.base import BaseEstimator, TransformerMixin
 import joblib
+import re
+from typing import Iterable, Optional, List
 
 # Optional: if a helper exists in your repo
 try:
@@ -96,6 +97,48 @@ class SentenceTransformerEncoder(BaseEstimator, TransformerMixin):
         if isinstance(X, (pd.Series, np.ndarray)):
             return X.tolist()
         return list(X)
+
+class TokenDropper(BaseEstimator, TransformerMixin):
+    """
+    Removes literal tokens and/or regex patterns from text.
+    - tokens: exact words/phrases to remove (matched as whole words by default)
+    - regexes: regex patterns to remove (e.g., URLs, numbers)
+    """
+    def __init__(
+        self,
+        tokens: Optional[Iterable[str]] = None,
+        regexes: Optional[Iterable[str]] = None,
+        casefold: bool = True,
+        whole_words: bool = True,
+        replace_with: str = " ",
+    ):
+        self.tokens = set(t.strip() for t in (tokens or []) if t and t.strip())
+        self.regexes = list(regexes or [])
+        self.casefold = casefold
+        self.whole_words = whole_words
+        self.replace_with = replace_with
+        self._compiled: Optional[re.Pattern] = None
+
+    def fit(self, X, y=None):
+        parts: List[str] = []
+        for t in self.tokens:
+            t_esc = re.escape(t)
+            parts.append(rf"\b{t_esc}\b" if self.whole_words else t_esc)
+        parts.extend(self.regexes)
+        if parts:
+            flags = re.IGNORECASE if self.casefold else 0
+            self._compiled = re.compile("|".join(parts), flags=flags)
+        return self
+
+    def transform(self, X):
+        def norm(s: str) -> str:
+            s = "" if s is None else str(s)
+            s = s.casefold() if self.casefold else s
+            if self._compiled:
+                s = self._compiled.sub(self.replace_with, s)
+            s = re.sub(r"\s+", " ", s).strip()
+            return s
+        return [norm(x) for x in X]
 
 
 def read_dataset(csv_path: str) -> pd.DataFrame:
@@ -164,21 +207,37 @@ def combine_text_columns(df: pd.DataFrame) -> pd.Series:
     )
     return text
 
+def build_pipeline(
+    model_name: str = DEFAULT_ST_MODEL,
+    ignore_tokens: Optional[Iterable[str]] = None,   # e.g., {"dear", "regards"}
+    ignore_patterns: Optional[Iterable[str]] = None, # e.g., [r"https?://\S+", r"\b\d{2,}\b"]
+    tfidf_stop_words: Optional[Iterable[str]] = None # optional extra stop words for TF-IDF
+) -> Pipeline:
+    cleaner = TokenDropper(tokens=ignore_tokens, regexes=ignore_patterns)
 
-def build_pipeline(model_name: str = DEFAULT_ST_MODEL) -> Pipeline:
     if model_name.lower() == "tfidf":
         from sklearn.feature_extraction.text import TfidfVectorizer
-        encoder = TfidfVectorizer(ngram_range=(1, 2), min_df=2)
-        clf = LogisticRegression(max_iter=2000, n_jobs=None, class_weight="balanced")
+        encoder = TfidfVectorizer(
+            ngram_range=(1, 2),
+            min_df=2,
+            stop_words=tfidf_stop_words,      # ← tokens removed at vectorizer stage
+            lowercase=True,
+            strip_accents="unicode",
+            token_pattern=r"(?u)\b\w+\b",
+        )
+        clf = LogisticRegression(max_iter=2000, class_weight="balanced")
         pipe = Pipeline([
-            ("tfidf", encoder),
+            ("clean", cleaner),               # ← remove tokens/regex BEFORE TF-IDF
+            ("tfidf", encoder),               # keep name 'tfidf' to match your ST_expl.py
             ("clf", clf),
         ])
         return pipe
 
+    # SBERT branch
     encoder = SentenceTransformerEncoder(model_name=model_name)
-    clf = LogisticRegression(max_iter=2000, n_jobs=None, class_weight="balanced")
+    clf = LogisticRegression(max_iter=2000, class_weight="balanced")
     pipe = Pipeline([
+        ("clean", cleaner),                   # ← same cleaner also works for SBERT inputs
         ("embed", encoder),
         ("clf", clf),
     ])
@@ -419,7 +478,15 @@ def train_and_evaluate(
     y_train_enc = le.fit_transform(y_train)
     y_test_enc  = le.transform(y_test)
 
-    pipe = build_pipeline(model_name)
+    IGNORE_TOKENS = {"monkey", "jose"}
+    IGNORE_PATTERNS = None  # URLs, subject prefixes, long numbers
+
+    pipe = build_pipeline(
+        model_name="tfidf",
+        ignore_tokens=IGNORE_TOKENS,
+        ignore_patterns=IGNORE_PATTERNS,
+        tfidf_stop_words={"monkey", "jose"}  # extra simple stop-words
+    )
     pipe.fit(X_train, y_train_enc)
 
     y_pred  = pipe.predict(X_test)

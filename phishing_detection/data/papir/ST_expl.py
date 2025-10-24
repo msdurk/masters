@@ -301,7 +301,6 @@ def integrated_gradients_tokens(bundle, text: str, class_name: str, steps: int =
     with torch.no_grad():
         out = enc(**{k: v for k, v in inputs.items() if k != "offset_mapping"})
         pooled = _mean_pool(out.last_hidden_state, inputs["attention_mask"])
-        _ = _l2_normalize(pooled)
 
     W = torch.tensor(clf.coef_, dtype=torch.float32)
     b = torch.tensor(clf.intercept_, dtype=torch.float32)
