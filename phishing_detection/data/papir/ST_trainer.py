@@ -482,10 +482,10 @@ def train_and_evaluate(
     IGNORE_PATTERNS = None  # URLs, subject prefixes, long numbers
 
     pipe = build_pipeline(
-        model_name="tfidf",
+        model_name=model_name,
         ignore_tokens=IGNORE_TOKENS,
         ignore_patterns=IGNORE_PATTERNS,
-        tfidf_stop_words={"monkey", "jose"}  # extra simple stop-words
+        tfidf_stop_words=["monkey", "jose"]  # extra simple stop-words
     )
     pipe.fit(X_train, y_train_enc)
 
