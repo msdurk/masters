@@ -1,51 +1,51 @@
 [Top +50] features for class = phishing
-  + monkey: 3.7723
-  + monkey org: 3.4973
-  + link: 3.2582
-  + your: 3.1015
-  + jose: 2.9916
-  + jose monkey: 2.3506
-  + following link: 2.1935
-  + opportunity: 1.9852
-  + will: 1.9519
-  + link com: 1.9470
-  + the following: 1.9321
-  + link https: 1.9276
-  + we have: 1.8991
-  + we: 1.8751
-  + following: 1.8218
-  + click on: 1.6827
-  + account: 1.6811
-  + we are: 1.6083
-  + 2022: 1.5524
-  + on the: 1.4783
-  + recently: 1.3513
-  + secure: 1.3400
-  + payment: 1.3378
-  + hello: 1.3071
-  + individuals: 1.2953
-  + exclusive: 1.2422
-  + below: 1.2389
-  + 2021: 1.2311
-  + document: 1.2280
-  + customer: 1.1579
-  + you will: 1.1481
-  + 2020: 1.1408
-  + update: 1.1348
-  + confirm: 1.0650
-  + org: 1.0609
-  + anderson: 1.0314
-  + reply: 1.0125
-  + dear customer: 1.0095
-  + has: 1.0083
-  + and am: 1.0057
-  + de: 0.9946
-  + been: 0.9923
-  + remember: 0.9911
-  + messages: 0.9856
-  + our secure: 0.9731
-  + your account: 0.9709
-  + password: 0.9652
-  + will be: 0.9517
-  + update your: 0.9304
-  + kindly: 0.9198
+  + link: 3.0968
+  + org: 2.9828
+  + your: 2.9496
+  + following link: 2.1267
+  + opportunity: 1.9704
+  + will: 1.9555
+  + link com: 1.8584
+  + link https: 1.8482
+  + the following: 1.8452
+  + we have: 1.8223
+  + 2022: 1.8206
+  + following: 1.7358
+  + account: 1.7202
+  + click on: 1.6232
+  + we: 1.5864
+  + we are: 1.5108
+  + 2021: 1.4384
+  + on the: 1.4066
+  + below: 1.3923
+  + messages: 1.3654
+  + recently: 1.3427
+  + hello: 1.3237
+  + password: 1.3237
+  + 2020: 1.3211
+  + secure: 1.3055
+  + individuals: 1.2559
+  + payment: 1.2357
+  + document: 1.2124
+  + mailbox: 1.1810
+  + exclusive: 1.1751
+  + confirm: 1.1625
+  + emails: 1.1443
+  + update: 1.1066
+  + your email: 1.0995
+  + email: 1.0940
+  + you will: 1.0674
+  + reply: 1.0245
+  + will be: 1.0166
+  + anderson: 1.0138
+  + this: 1.0059
+  + has: 0.9817
+  + customer: 0.9789
+  + remember: 0.9753
+  + been: 0.9686
+  + kindly: 0.9650
+  + verify: 0.9649
+  + portal: 0.9629
+  + wetransfer: 0.9609
+  + upgrade: 0.9515
+  + our secure: 0.9410
