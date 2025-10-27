@@ -47,6 +47,8 @@ from typing import List, Optional, Tuple
 from typing import Tuple
 import numpy as np
 import joblib
+from ST_trainer import TokenDropper
+
 
 from sklearn.feature_extraction.text import TfidfVectorizer
 # -------------------------------------------------
@@ -507,7 +509,7 @@ def ig_corpus_top_words_signed(
     if strip_stop:
         stop.update({'the','a','an','and','or','to','of','in','for','on','at','with',
                      'from','by','as','is','are','be','this','that','it','you','your',
-                     'we','our','us','re','fw','fwd','de'})
+                     'we','our','us','re','fw','fwd','de', "monkey", "jose"})
 
     # Global word-level sums
     agg_abs = {}     # word -> total |IG|
