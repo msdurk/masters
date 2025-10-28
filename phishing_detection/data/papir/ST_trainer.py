@@ -39,7 +39,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.base import BaseEstimator, TransformerMixin
 import joblib
 import re
-from typing import Iterable, Optional, List
+from typing import Iterable, Optional, Dict, Union, List, Tuple
 
 # Optional: if a helper exists in your repo
 try:
@@ -141,6 +141,59 @@ class TokenDropper(BaseEstimator, TransformerMixin):
         return [norm(x) for x in X]
 
 
+
+# ---------------------------
+# Practical regexes to mask
+# ---------------------------
+EMAIL_RE = re.compile(
+    r'(?<![\w.+-])'                # don’t match mid-word
+    r'[\w.+-]+'                    # local part
+    r'@'
+    r'(?:[\w-]+\.)+[A-Za-z]{2,}'   # domain
+    r'(?![\w.-])',                 # don’t run on
+    flags=re.IGNORECASE
+)
+
+URL_RE = re.compile(r'https?://\S+', flags=re.IGNORECASE)
+
+# Lenient phone pattern (international-ish, ignores very short/long junk)
+PHONE_RE = re.compile(
+    r'(?:\+?\d[\d\s().-]{7,}\d)'   # at least ~9 digits incl. separators
+)
+
+# ---------------------------
+# Small replacer transformer
+# ---------------------------
+class RegexReplacer(BaseEstimator, TransformerMixin):
+    """
+    Replace regex matches in raw text with placeholder tokens.
+    Accepts either compiled patterns or strings (compiled case-insensitively).
+    """
+    def __init__(self, replacements: Dict[Union[str, re.Pattern], str]):
+        pats: List[Tuple[re.Pattern, str]] = []
+        for pat, tok in replacements.items():
+            if isinstance(pat, str):
+                pat = re.compile(pat, re.IGNORECASE)
+            pats.append((pat, tok))
+        self._patterns = pats
+
+    def fit(self, X, y=None):
+        return self
+
+    def _replace_one(self, text: str) -> str:
+        for pat, tok in self._patterns:
+            text = pat.sub(tok, text)
+        return text
+
+    def transform(self, X):
+        if isinstance(X, np.ndarray):
+            return np.vectorize(self._replace_one, otypes=[object])(X)
+        try:
+            return [self._replace_one(t) for t in X]
+        except TypeError:
+            # single string passed
+            return [self._replace_one(X)]
+
 def read_dataset(csv_path: str) -> pd.DataFrame:
     """Robust CSV reader that handles messy files.
 
@@ -206,43 +259,69 @@ def combine_text_columns(df: pd.DataFrame) -> pd.Series:
         .str.strip()
     )
     return text
-
 def build_pipeline(
     model_name: str = DEFAULT_ST_MODEL,
-    ignore_tokens: Optional[Iterable[str]] = None,   # e.g., {"dear", "regards"}
-    ignore_patterns: Optional[Iterable[str]] = None, # e.g., [r"https?://\S+", r"\b\d{2,}\b"]
-    tfidf_stop_words: Optional[Iterable[str]] = None # optional extra stop words for TF-IDF
+    ignore_tokens: Optional[Iterable[str]] = None,           # e.g., {"dear", "regards"}
+    ignore_patterns: Optional[Iterable[str]] = None,         # e.g., [r"https?://\S+", r"\b\d{2,}\b"]
+    tfidf_stop_words: Optional[Iterable[str]] = None,        # optional extra stop words for TF-IDF
+
+    # ---------- NEW optional masking switches ----------
+    mask_emails: bool = True,
+    mask_urls: bool = True,
+    mask_phones: bool = True,
+    # Add your own regex->token pairs here (compiled or str patterns)
+    additional_masks: Optional[Dict[Union[str, re.Pattern], str]] = None,
+    # ---------------------------------------------------
 ) -> Pipeline:
+    """
+    Build a classification pipeline with optional pre-tokenization masking.
+    Masking runs BEFORE TokenDropper so that ignored tokens/patterns see the masked text.
+    """
+    steps: List[Tuple[str, object]] = []
+
+    # Assemble the replacement map based on toggles
+    replacements: Dict[Union[str, re.Pattern], str] = {}
+    if mask_emails:
+        replacements[EMAIL_RE] = "email_address"
+    if mask_urls:
+        replacements[URL_RE] = "url_token"
+    if mask_phones:
+        replacements[PHONE_RE] = "phone_number"
+    if additional_masks:
+        # user-provided extras win last (can override tokens if desired)
+        replacements.update(additional_masks)
+
+    if replacements:
+        steps.append(("mask", RegexReplacer(replacements)))
+
     cleaner = TokenDropper(tokens=ignore_tokens, regexes=ignore_patterns)
+    steps.append(("clean", cleaner))  # remove tokens/regex BEFORE vectorization/embedding
 
     if model_name.lower() == "tfidf":
         from sklearn.feature_extraction.text import TfidfVectorizer
         encoder = TfidfVectorizer(
             ngram_range=(1, 2),
             min_df=2,
-            stop_words=tfidf_stop_words,      # ← tokens removed at vectorizer stage
+            stop_words=tfidf_stop_words,      # tokens removed at vectorizer stage
             lowercase=True,
             strip_accents="unicode",
-            token_pattern=r"(?u)\b\w+\b",
+            token_pattern=r"(?u)\b\w+\b",     # keeps "email_address" etc. as single tokens
         )
         clf = LogisticRegression(max_iter=2000, class_weight="balanced")
-        pipe = Pipeline([
-            ("clean", cleaner),               # ← remove tokens/regex BEFORE TF-IDF
+        steps.extend([
             ("tfidf", encoder),               # keep name 'tfidf' to match your ST_expl.py
             ("clf", clf),
         ])
-        return pipe
+        return Pipeline(steps)
 
     # SBERT branch
     encoder = SentenceTransformerEncoder(model_name=model_name)
     clf = LogisticRegression(max_iter=2000, class_weight="balanced")
-    pipe = Pipeline([
-        ("clean", cleaner),                   # ← same cleaner also works for SBERT inputs
+    steps.extend([
         ("embed", encoder),
         ("clf", clf),
     ])
-    return pipe
-
+    return Pipeline(steps)
 
 
 def load_model(path: str = SAVED_MODEL_PATH):
@@ -631,7 +710,7 @@ def main(argv: Optional[List[str]] = None):  # type: ignore[override]
             binary=args.binary,
             positive_label=args.positive_label,
             negative_label_name=args.negative_label_name,
-            ignore_labels=args.ignore_labels,
+            ignore_labels=ignore_list,
             undersample_neg=args.undersample_neg
         )
         if args.predict:
