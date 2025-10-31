@@ -19,6 +19,7 @@ import joblib
 import numpy as np
 import pandas as pd
 from ST_trainer import TokenDropper, SentenceTransformerEncoder
+from sklearn.feature_extraction.text import TfidfVectorizer
 
 
 
@@ -28,6 +29,36 @@ except Exception:  # pragma: no cover
     classification_report = None
     confusion_matrix = None
 
+from collections import Counter
+import math
+import re
+
+def _tokenize_for_cosine(s: str) -> list[str]:
+    return [t for t in re.findall(r"[A-Za-z0-9]+", str(s).lower()) if t]
+
+def _tf(tokens: list[str]) -> Counter:
+    return Counter(tokens)
+
+def _cosine_from_counters(a: Counter, b: Counter) -> float:
+    if not a or not b:
+        return 0.0
+    dot = sum(a[t] * b.get(t, 0) for t in a)
+    na = math.sqrt(sum(v * v for v in a.values()))
+    nb = math.sqrt(sum(v * v for v in b.values()))
+    if na == 0 or nb == 0:
+        return 0.0
+    return dot / (na * nb)
+
+def reduce_pairs_by_cosine(data: list[dict], threshold: float = 0.92) -> list[dict]:
+    """Drop items where original_text and rephrased_text are too similar."""
+    reduced = []
+    for d in data:
+        o = _tf(_tokenize_for_cosine(d.get("original_text", "")))
+        r = _tf(_tokenize_for_cosine(d.get("rephrased_text", "")))
+        cos = _cosine_from_counters(o, r)
+        if cos < threshold:
+            reduced.append(d)
+    return reduced
 
 def load_bundle(model_path: str) -> Dict[str, Any]:
     bundle = joblib.load(model_path)
@@ -74,6 +105,15 @@ def evaluate(model_path: str, json_path: str, out_csv: str | None, out_summary: 
     print(f"[evaluate] Reading JSON: {json_path}")
     with open(json_path, "r", encoding="utf-8") as f:
         data = json.load(f)
+    # Added: filter too-similar pairs using cosine
+    try:
+        threshold = float(os.environ.get("COSINE_SIM_THRESHOLD", "0.92"))
+    except Exception:
+        threshold = 0.92
+    orig_len = len(data)
+    data = reduce_pairs_by_cosine(data, threshold)
+    print(f"[evaluate] Cosine filter threshold={threshold:.2f}: kept {len(data)}/{orig_len}")
+
 
     original_texts = [d["original_text"] for d in data]
     rephrased_texts = [d["rephrased_text"] for d in data]
@@ -83,6 +123,8 @@ def evaluate(model_path: str, json_path: str, out_csv: str | None, out_summary: 
     canonical_map = {
         "phishing": "phishing",
         "phishing_human": "phishing",
+        "phishing_llm": "phishing",
+        "legit_llm": "Other",
         "phish": "phishing",
         "other": "Other",
         "legit": "Other",

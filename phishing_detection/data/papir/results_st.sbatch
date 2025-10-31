@@ -19,7 +19,7 @@ python -c "import numpy; print('NumPy', numpy.__version__)"
 
 python results.py \
   --model models/binary_email_type_classifier.joblib \
-  --json rephrased_emails_clean_pretty.json \
+  --json rephrased_emails_clean_pretty2.json \
   --out-csv json_eval_probabilities.csv \
   --out-summary json_eval_summary.json
 
