@@ -19,7 +19,9 @@ python -c "import numpy; print('NumPy', numpy.__version__)"
 
 python results.py \
   --model models/binary_tfidf.joblib \
-  --json rephrased_emails_clean_pretty2.json \
-  --out-csv json_eval_probabilities.csv \
-  --out-summary json_eval_summary.json
-
+  --cosine-model models/binary_email_type_classifier.joblib \
+  --json rephrased_emails_merged.json \
+  --only-phishing \
+  --force-sim-encoder auto \
+  --out-csv results.csv \
+  --out-summary summary.json

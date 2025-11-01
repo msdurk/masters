@@ -47,7 +47,7 @@ from typing import List, Optional, Tuple
 from typing import Tuple
 import numpy as np
 import joblib
-from ST_trainer import TokenDropper
+from ST_trainer import TokenDropper, RegexReplacer
 
 
 from sklearn.feature_extraction.text import TfidfVectorizer

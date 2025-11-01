@@ -1,278 +1,510 @@
+
 #!/usr/bin/env python3
-"""
-Evaluate a pretrained text classification model on a JSON dataset that
-contains pairs of `original_text` and `rephrased_text`, along with a
-`source` field holding the true label.
+"""results_phishing_only.py (multi-threshold + dual-encoder cosine runs, optional second model)
 
-This version automatically remaps labels with suffixes like `_human`
-(e.g. 'phishing_human' → 'phishing', 'legit_human' → 'legit') if they
-are not recognized by the model's LabelEncoder.
-"""
-from __future__ import annotations
+- PRIMARY model (--model) is always used for *classification*.
+- Cosine encoder for the PRIMARY run comes from the PRIMARY model (forced by --force-sim-encoder).
+- Cosine encoder for the OTHER run:
+    * If --cosine-model is provided, encoder steps are extracted from that SECOND model
+      (optionally forced by --force-other-sim-encoder).
+    * Otherwise, we use the "opposite" encoder from the PRIMARY model (tfidf <-> sbert).
+- Thresholds are fixed to [0.90, 0.80, 0.70, 0.60]. For each threshold we run PRIMARY then OTHER.
+- No scikit-learn Pipeline construction during similarity (avoids 'Pipeline not fitted' warning).
+- Each run prints ONLY four lines: rephrased_accuracy, cosine_threshold, cosine_encoder_used, num_emails_evaluated.
+- CSV/Summary outputs get suffixes to avoid overwrite. If --cosine-model is used for OTHER, filenames include 'cos2'.
 
+"""
+from ST_trainer import RegexReplacer, TokenDropper, SentenceTransformerEncoder
 import argparse
 import json
+import math
+import os
 import sys
-from typing import Any, Dict, List
+from collections import Counter
+from typing import List, Tuple, Optional
 
 import joblib
 import numpy as np
-import pandas as pd
-from ST_trainer import TokenDropper, SentenceTransformerEncoder
-from sklearn.feature_extraction.text import TfidfVectorizer
 
-
-
+# Optional sklearn utilities for vector-space cosine
 try:
-    from sklearn.metrics import classification_report, confusion_matrix
+    from sklearn.preprocessing import normalize as sk_normalize
+    from sklearn.metrics.pairwise import cosine_similarity as sk_cosine_similarity
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    _SK_OK = True
 except Exception:  # pragma: no cover
-    classification_report = None
-    confusion_matrix = None
+    _SK_OK = False
+    TfidfVectorizer = object  # placeholder
 
-from collections import Counter
-import math
-import re
 
-def _tokenize_for_cosine(s: str) -> list[str]:
-    return [t for t in re.findall(r"[A-Za-z0-9]+", str(s).lower()) if t]
+# --- Fallback (legacy) token overlap cosine ---
 
-def _tf(tokens: list[str]) -> Counter:
-    return Counter(tokens)
+def tokenize_for_cosine(s: str) -> Counter:
+    s = (s or "").lower()
+    tokens = []
+    cur = []
+    for ch in s:
+        if ch.isalnum():
+            cur.append(ch)
+        else:
+            if cur:
+                tokens.append(''.join(cur))
+                cur = []
+    if cur:
+        tokens.append(''.join(cur))
+    from collections import Counter as _Counter
+    return _Counter(tokens)
 
-def _cosine_from_counters(a: Counter, b: Counter) -> float:
+
+def cosine_from_counters(a: Counter, b: Counter) -> float:
     if not a or not b:
         return 0.0
-    dot = sum(a[t] * b.get(t, 0) for t in a)
+    dot = 0
+    for k, v in a.items():
+        dot += v * b.get(k, 0)
     na = math.sqrt(sum(v * v for v in a.values()))
     nb = math.sqrt(sum(v * v for v in b.values()))
     if na == 0 or nb == 0:
         return 0.0
     return dot / (na * nb)
 
-def reduce_pairs_by_cosine(data: list[dict], threshold: float = 0.92) -> list[dict]:
-    """Drop items where original_text and rephrased_text are too similar."""
-    reduced = []
-    for d in data:
-        o = _tf(_tokenize_for_cosine(d.get("original_text", "")))
-        r = _tf(_tokenize_for_cosine(d.get("rephrased_text", "")))
-        cos = _cosine_from_counters(o, r)
-        if cos < threshold:
-            reduced.append(d)
-    return reduced
 
-def load_bundle(model_path: str) -> Dict[str, Any]:
-    bundle = joblib.load(model_path)
-    if isinstance(bundle, dict) and "pipeline" in bundle:
-        return bundle
-    return {"pipeline": bundle, "label_encoder": getattr(bundle, "label_encoder", None)}
+def canonicalize_label(label: str) -> str:
+    if label is None:
+        return 'Other'
+    lab = str(label).lower()
+    if lab.startswith('phish') or 'phish' in lab or 'malicious' in lab or 'spam' == lab:
+        return 'phishing'
+    return 'Other'
 
 
-def predict_proba_safe(pipe, X: List[str]) -> np.ndarray:
-    if hasattr(pipe, "predict_proba"):
-        return pipe.predict_proba(X)
-    if hasattr(pipe, "decision_function"):
-        from scipy.special import softmax
-        scores = pipe.decision_function(X)
-        if scores.ndim == 1:
-            scores = np.vstack([-scores, scores]).T
-        return softmax(scores, axis=1)
-    hard = pipe.predict(X)
-    classes_ = getattr(pipe, "classes_", None)
-    if classes_ is None:
-        raise ValueError("Model has neither predict_proba nor classes_.")
-    proba = np.zeros((len(hard), len(classes_)), dtype=float)
-    idx = {c: i for i, c in enumerate(classes_)}
-    for r, h in enumerate(hard):
-        proba[r, idx[h]] = 1.0
-    return proba
+def get_probs_from_model(model, texts: List[str]) -> np.ndarray:
+    """Return an (N, C) array of probabilities for each text.
+    If the model supports predict_proba, use it. Otherwise try decision_function -> softmax.
+    As a last resort, use one-hot from predict.
+    """
+    if hasattr(model, 'predict_proba'):
+        return np.asarray(model.predict_proba(texts))
+
+    if hasattr(model, 'decision_function'):
+        dec = np.asarray(model.decision_function(texts))
+        if dec.ndim == 1:
+            dec = np.vstack([-dec, dec]).T
+        exp = np.exp(dec - dec.max(axis=1, keepdims=True))
+        return exp / exp.sum(axis=1, keepdims=True)
+
+    preds = model.predict(texts)
+    if hasattr(model, 'classes_'):
+        classes = list(model.classes_)
+    else:
+        classes = sorted(set(preds))
+    class_index = {c: i for i, c in enumerate(classes)}
+    probs = np.zeros((len(preds), len(classes)), dtype=float)
+    for i, p in enumerate(preds):
+        probs[i, class_index[p]] = 1.0
+    return probs
 
 
-def evaluate(model_path: str, json_path: str, out_csv: str | None, out_summary: str | None) -> Dict[str, Any]:
-    print(f"[evaluate] Loading model: {model_path}")
-    bundle = load_bundle(model_path)
-    pipe = bundle["pipeline"]
-    le = bundle.get("label_encoder")
-
-    if le is not None and hasattr(le, "classes_"):
-        class_names = list(le.classes_)
-    elif hasattr(pipe, "classes_"):
-        class_names = list(pipe.classes_)
+def load_pipeline_and_encoder(path: str):
+    obj = joblib.load(path)
+    if isinstance(obj, dict):
+        pipeline = obj.get('pipeline') or obj.get('model') or obj
+        le = obj.get('label_encoder')
+    else:
+        pipeline = obj
         le = None
-    else:
-        raise ValueError("Could not determine class names.")
-    class_index = {c: i for i, c in enumerate(class_names)}
+    return pipeline, le
 
-    print(f"[evaluate] Reading JSON: {json_path}")
-    with open(json_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    # Added: filter too-similar pairs using cosine
+
+# === Encoder detection helpers ===
+
+def _is_classifier_step(name: str, step) -> bool:
+    lname = name.lower()
+    if lname in ('clf', 'classifier', 'final', 'estimator'):
+        return True
+    return (hasattr(step, 'fit') and hasattr(step, 'predict') and not hasattr(step, 'transform'))
+
+
+def _is_tfidf_step(name: str, step) -> bool:
+    if isinstance(step, TfidfVectorizer):
+        return True
+    n = name.lower()
+    if 'tfidf' in n or 'tf-idf' in n:
+        return True
+    return hasattr(step, 'get_feature_names_out') and hasattr(step, 'transform')
+
+
+def _is_sbert_step(name: str, step) -> bool:
+    n = name.lower()
+    if any(tag in n for tag in ('sbert', 'sentence', 'st_embed', 'embed', 'embedding')):
+        if not _is_tfidf_step(name, step) and hasattr(step, 'transform'):
+            return True
+    cls = type(step).__name__.lower()
+    if any(t in cls for t in ('sentence', 'sbert', 'transformer')) and hasattr(step, 'transform'):
+        return True
+    return hasattr(step, 'encode') or hasattr(step, 'model')
+
+
+def _iter_feature_steps_auto(full_pipeline) -> Tuple[List[Tuple[str, object]], Optional[str]]:
+    if not hasattr(full_pipeline, 'steps'):
+        return [], None
+    collected = []
+    encoder_kind = None
+    for name, step in full_pipeline.steps:
+        if _is_classifier_step(name, step):
+            break
+        collected.append((name, step))
+        if _is_tfidf_step(name, step):
+            encoder_kind = 'tfidf'
+        elif _is_sbert_step(name, step):
+            encoder_kind = 'sbert'
+    return collected, encoder_kind
+
+
+def _iter_feature_steps_forced(full_pipeline, mode: str) -> Tuple[List[Tuple[str, object]], Optional[str]]:
+    if not hasattr(full_pipeline, 'steps'):
+        return [], None
+    collected = []
+    found = False
+    for name, step in full_pipeline.steps:
+        collected.append((name, step))
+        if mode == 'tfidf' and _is_tfidf_step(name, step):
+            found = True
+            return collected, 'tfidf'
+        if mode == 'sbert' and _is_sbert_step(name, step):
+            found = True
+            return collected, 'sbert'
+        if _is_classifier_step(name, step):
+            break
+    return (collected if found else []), (mode if found else None)
+
+
+def _transform_through_steps(steps: List[Tuple[str, object]], texts: List[str]):
+    X = texts
+    for name, step in steps:
+        if step is None or step == 'drop' or step == 'passthrough':
+            continue
+        if hasattr(step, 'transform'):
+            X = step.transform(X)
+        elif hasattr(step, 'encode'):
+            X = step.encode(list(X))
+        else:
+            try:
+                X = step(X)
+            except Exception:
+                pass
+    return X
+
+
+# === Vector-space cosine ===
+
+def pairwise_row_cosines(A, B) -> np.ndarray:
+    if not _SK_OK:
+        raise RuntimeError("scikit-learn not available for vector cosine")
+    A_n = sk_normalize(A, norm='l2', copy=False)
+    B_n = sk_normalize(B, norm='l2', copy=False)
     try:
-        threshold = float(os.environ.get("COSINE_SIM_THRESHOLD", "0.92"))
+        import scipy.sparse as sp  # type: ignore
+        if sp.issparse(A_n) and sp.issparse(B_n):
+            return np.asarray((A_n.multiply(B_n)).sum(axis=1)).ravel()
     except Exception:
-        threshold = 0.92
-    orig_len = len(data)
-    data = reduce_pairs_by_cosine(data, threshold)
-    print(f"[evaluate] Cosine filter threshold={threshold:.2f}: kept {len(data)}/{orig_len}")
+        pass
+    sims = []
+    for i in range(A_n.shape[0]):
+        s = sk_cosine_similarity(A_n[i], B_n[i])[0, 0]
+        sims.append(float(s))
+    return np.array(sims, dtype=float)
 
 
-    original_texts = [d["original_text"] for d in data]
-    rephrased_texts = [d["rephrased_text"] for d in data]
-    true_labels_names = [d["source"] for d in data]
+def embedding_cosine_filter(
+    feature_steps: List[Tuple[str, object]],
+    original_texts: List[str],
+    rephr_texts: List[str],
+    threshold: float
+):
+    A = _transform_through_steps(feature_steps, original_texts)
+    B = _transform_through_steps(feature_steps, rephr_texts)
+    sims = pairwise_row_cosines(A, B)
+    keep_idx = [i for i, s in enumerate(sims) if s < threshold]
+    discarded = int((sims >= threshold).sum())
+    return keep_idx, discarded, sims
 
-    # Canonicalize labels to your 2 classes: 'Other' and 'phishing' (case-insensitive)
-    canonical_map = {
-        "phishing": "phishing",
-        "phishing_human": "phishing",
-        "phishing_llm": "phishing",
-        "legit_llm": "Other",
-        "phish": "phishing",
-        "other": "Other",
-        "legit": "Other",
-        "legit_human": "Other",
-        "ham": "Other",
-        "benign": "Other",
-        "non_phishing": "Other",
-        "safe": "Other",
-    }
-    def to_canonical(lbl: str) -> str:
-        return canonical_map.get(str(lbl).strip().lower(), str(lbl))
 
-    # First pass: canonicalize all incoming labels
-    true_labels_names = [to_canonical(lbl) for lbl in true_labels_names]
+# === Evaluation helper (single run) ===
 
-    # If the model has a LabelEncoder, ensure the canonical labels exist; if not, try to nudge
-    if le is not None:
-        want = {"Other", "phishing"}
-        have = set(map(str, getattr(le, "classes_", [])))
-        # If we still see anything outside the model's classes, try a gentle fix for capitalization
-        remapped = []
-        for lbl in true_labels_names:
-            if lbl not in have and lbl.lower() == "other" and "Other" in have:
-                remapped.append("Other")
-            else:
-                remapped.append(lbl)
-        true_labels_names = remapped
+def run_once(pipeline,
+             rows: List[dict],
+             feature_steps: List[Tuple[str, object]],
+             used_encoder_kind: str,
+             threshold: float,
+             model_class_names: List[str],
+             canonical_index: dict,
+             out_csv: Optional[str] = None,
+             out_summary: Optional[str] = None):
+    # Prepare texts
+    originals = [r['original_text'] for r in rows]
+    rephrased = [r['rephrased_text'] for r in rows]
 
-        # Final guardrail: surface any remaining unknowns clearly
-        unknown = sorted({lbl for lbl in true_labels_names if lbl not in have})
-        if unknown:
-            print(f"[WARN] Labels not in model classes {sorted(have)}: {unknown}")
-            print("      Tip: retrain or extend mapping above to cover these variants.")
-
-        y_true = le.transform(true_labels_names)
+    # Similarity-based filtering
+    discarded_count = 0
+    sims = None
+    if feature_steps and _SK_OK:
+        try:
+            keep_idx, discarded_count, sims = embedding_cosine_filter(feature_steps, originals, rephrased, threshold)
+            kept_rows = [rows[i] for i in keep_idx]
+        except Exception:
+            feature_steps = []
+            kept_rows = []
     else:
-        y_true = np.array([class_index[name] for name in true_labels_names], dtype=int)
+        kept_rows = []
 
-    y_pred_orig = pipe.predict(original_texts)
-    if np.issubdtype(np.array(y_pred_orig).dtype, np.integer):
-        y_pred_orig_idx = np.asarray(y_pred_orig, dtype=int)
-        y_pred_orig_names = [class_names[i] for i in y_pred_orig_idx]
+    if not feature_steps:
+        # token fallback
+        kept = []
+        local_sims = []
+        for row in rows:
+            a = tokenize_for_cosine(row['original_text'])
+            b = tokenize_for_cosine(row['rephrased_text'])
+            sim = cosine_from_counters(a, b)
+            local_sims.append(sim)
+            if sim >= threshold:
+                discarded_count += 1
+                continue
+            kept.append(row)
+        kept_rows = kept
+        sims = np.array(local_sims, dtype=float)
+
+    # Predictions
+    originals_kept = [r['original_text'] for r in kept_rows]
+    rephrased_kept = [r['rephrased_text'] for r in kept_rows]
+
+    if len(kept_rows) > 0:
+        orig_probs = get_probs_from_model(pipeline, originals_kept)
+        rephr_probs = get_probs_from_model(pipeline, rephrased_kept)
     else:
-        y_pred_orig_names = list(map(str, y_pred_orig))
-        y_pred_orig_idx = np.array([class_index[n] for n in y_pred_orig_names], dtype=int)
+        orig_probs = np.zeros((0, 2))
+        rephr_probs = np.zeros((0, 2))
 
-    proba_orig = predict_proba_safe(pipe, original_texts)
-    acc_orig = float(np.mean(y_pred_orig_idx == y_true))
+    # Rephrased accuracy
+    y_true = []
+    y_pred_reph = []
+    for i, r in enumerate(kept_rows):
+        true_c = r['true_canonical']
+        idx_true = canonical_index.get(true_c, canonical_index.get('Other', 0))
+        pred_idx_reph = int(np.argmax(rephr_probs[i])) if len(kept_rows) > 0 else 0
+        pred_reph_name = model_class_names[pred_idx_reph] if model_class_names else str(pred_idx_reph)
+        def _is_phish_name(name):
+            return isinstance(name, str) and ('phish' in name.lower() or 'spam' == name.lower())
+        y_true.append(1 if true_c == 'phishing' else 0)
+        y_pred_reph.append(1 if (_is_phish_name(pred_reph_name) and true_c != 'Other') or (pred_idx_reph == idx_true and true_c == 'phishing') else (1 if _is_phish_name(pred_reph_name) else 0))
 
-    y_pred_reph = pipe.predict(rephrased_texts)
-    if np.issubdtype(np.array(y_pred_reph).dtype, np.integer):
-        y_pred_reph_idx = np.asarray(y_pred_reph, dtype=int)
-        y_pred_reph_names = [class_names[i] for i in y_pred_reph_idx]
-    else:
-        y_pred_reph_names = list(map(str, y_pred_reph))
-        y_pred_reph_idx = np.array([class_index[n] for n in y_pred_reph_names], dtype=int)
+    acc_reph = (sum(1 for yt, yp in zip(y_true, y_pred_reph) if yt == yp) / len(y_true)) if y_true else 0.0
 
-    proba_reph = predict_proba_safe(pipe, rephrased_texts)
-    acc_reph = float(np.mean(y_pred_reph_idx == y_true))
-
-    mean_proba_per_class_original = {c: float(proba_orig[:, i].mean()) for i, c in enumerate(class_names)}
-    mean_proba_per_class_rephrased = {c: float(proba_reph[:, i].mean()) for i, c in enumerate(class_names)}
-
-    idx = np.arange(len(y_true))
-    mean_trueclass_proba_original = float(proba_orig[idx, y_true].mean())
-    mean_trueclass_proba_rephrased = float(proba_reph[idx, y_true].mean())
-
-    average_accuracy = float(np.mean([acc_orig, acc_reph]))
-    average_trueclass_proba = float(np.mean([mean_trueclass_proba_original, mean_trueclass_proba_rephrased]))
-
-    by_label_true_p = {}
-    for c, i in class_index.items():
-        mask = (y_true == i)
-        if mask.any():
-            by_label_true_p[c] = {
-                "n": int(mask.sum()),
-                "mean_true_p_original": float(proba_orig[mask, i].mean()),
-                "mean_true_p_rephrased": float(proba_reph[mask, i].mean()),
-            }
-
-    rows = []
-    for i in range(len(data)):
-        row = {
-            "id": i,
-            "true_label": true_labels_names[i],
-            "pred_original": y_pred_orig_names[i],
-            "pred_rephrased": y_pred_reph_names[i],
-            "correct_original": bool(y_pred_orig_idx[i] == y_true[i]),
-            "correct_rephrased": bool(y_pred_reph_idx[i] == y_true[i]),
-        }
-        for j, cname in enumerate(class_names):
-            row[f"proba_original::{cname}"] = float(proba_orig[i, j])
-            row[f"proba_rephrased::{cname}"] = float(proba_reph[i, j])
-        true_cname = true_labels_names[i]
-        row["proba_original::true_class"] = float(proba_orig[i, class_index[true_cname]])
-        row["proba_rephrased::true_class"] = float(proba_reph[i, class_index[true_cname]])
-        row["delta_trueclass_proba"] = row["proba_rephrased::true_class"] - row["proba_original::true_class"]
-        rows.append(row)
-
-    df = pd.DataFrame(rows)
+    # Optional outputs
     if out_csv:
-        df.to_csv(out_csv, index=False, encoding="utf-8")
-        print(f"[evaluate] Wrote per-item probabilities to: {out_csv}")
+        import csv
+        with open(out_csv, 'w', newline='', encoding='utf8') as outf:
+            fieldnames = ['true_label', 'source_raw', 'original_pred', 'rephrased_pred', 'original_true_prob', 'rephrased_true_prob', 'delta_true_prob']
+            writer = csv.DictWriter(outf, fieldnames=fieldnames)
+            writer.writeheader()
+            for i, r in enumerate(kept_rows):
+                true_c = r['true_canonical']
+                # The above accidental unicode glitch fixed below
 
-    if classification_report is not None:
-        print("\n=== Metrics ===")
-        print(f"Accuracy (Original): {acc_orig:.4f}")
-        print(f"Accuracy (Rephrased): {acc_reph:.4f}")
-        print(f"Average Accuracy: {average_accuracy*100:.2f}%")
-        print(f"Mean TRUE-class p (Original): {mean_trueclass_proba_original:.4f}")
-        print(f"Mean TRUE-class p (Rephrased): {mean_trueclass_proba_rephrased:.4f}")
-        print(f"Avg TRUE-class p (General %): {average_trueclass_proba*100:.2f}%")
-
-    result = {
-        "classes": class_names,
-        "accuracy_original": acc_orig,
-        "accuracy_rephrased": acc_reph,
-        "average_accuracy": average_accuracy,
-        "mean_trueclass_proba_original": mean_trueclass_proba_original,
-        "mean_trueclass_proba_rephrased": mean_trueclass_proba_rephrased,
-        "average_trueclass_proba": average_trueclass_proba,
-        "mean_proba_per_class_original": mean_proba_per_class_original,
-        "mean_proba_per_class_rephrased": mean_proba_per_class_rephrased,
-        "by_label_trueclass_proba": by_label_true_p,
-        "per_item_csv": out_csv,
-    }
+                idx_true = canonical_index.get(true_c, canonical_index.get('Other', 0))
+                pred_idx_orig = int(np.argmax(orig_probs[i])) if len(kept_rows) > 0 else 0
+                pred_idx_reph = int(np.argmax(rephr_probs[i])) if len(kept_rows) > 0 else 0
+                pred_orig_name = model_class_names[pred_idx_orig] if model_class_names else str(pred_idx_orig)
+                pred_reph_name = model_class_names[pred_idx_reph] if model_class_names else str(pred_idx_reph)
+                prob_true_orig = float(orig_probs[i, idx_true]) if len(kept_rows) > 0 and idx_true < orig_probs.shape[1] else 0.0
+                prob_true_reph = float(rephr_probs[i, idx_true]) if len(kept_rows) > 0 and idx_true < rephr_probs.shape[1] else 0.0
+                writer.writerow({
+                    'true_label': true_c,
+                    'source_raw': r['source_raw'],
+                    'original_pred': pred_orig_name,
+                    'rephrased_pred': pred_reph_name,
+                    'original_true_prob': prob_true_orig,
+                    'rephrased_true_prob': prob_true_reph,
+                    'delta_true_prob': prob_true_reph - prob_true_orig,
+                })
 
     if out_summary:
-        with open(out_summary, "w", encoding="utf-8") as f:
-            json.dump(result, f, indent=2)
-        print(f"[evaluate] Wrote summary JSON to: {out_summary}")
+        summary = {
+            'num_evaluated': len(kept_rows),
+            'cosine_threshold': threshold,
+            'used_encoder_kind': used_encoder_kind,
+            'rephrased_accuracy': acc_reph,
+            'discarded_for_similarity': int(discarded_count),
+        }
+        with open(out_summary, 'w', encoding='utf8') as jf:
+            json.dump(summary, jf, indent=2)
 
-    return result
+    # Print only the four requested lines
+    print(f"rephrased_accuracy: {acc_reph:.4f}")
+    print(f"cosine_threshold: {threshold:.4f}")
+    print(f"cosine_encoder_used: {used_encoder_kind}")
+    print(f"num_emails_evaluated: {len(kept_rows)}")
 
-
-def parse_args(argv: List[str]) -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Evaluate pretrained model on JSON with auto label remap.")
-    p.add_argument("--model", required=True)
-    p.add_argument("--json", required=True)
-    p.add_argument("--out-csv", default="json_eval_probabilities.csv")
-    p.add_argument("--out-summary", default=None)
-    return p.parse_args(argv)
-
-
-def main(argv: List[str] | None = None) -> None:
-    args = parse_args(sys.argv[1:] if argv is None else argv)
-    evaluate(args.model, args.json, args.out_csv, args.out_summary)
+    return acc_reph, len(kept_rows), used_encoder_kind
 
 
-if __name__ == "__main__":
-    main()
+def main(argv=None):
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--model', required=True, help='path to PRIMARY joblib model (used for classification)')
+    parser.add_argument('--json', required=True, help='path to dataset json')
+    parser.add_argument('--out-csv', default='json_eval_probabilities.csv')
+    parser.add_argument('--out-summary', default=None)
+    parser.add_argument('--only-phishing', action='store_true', default=False, help='only evaluate rows whose true label canonicalizes to "phishing"')
+    parser.add_argument('--force-sim-encoder', choices=['auto', 'tfidf', 'sbert'], default='auto',
+                        help='PRIMARY run cosine encoder selection (from PRIMARY model).')
+    parser.add_argument('--cosine-model', default=None, help='OPTIONAL: SECOND joblib model to supply encoder for the OTHER cosine run.')
+    parser.add_argument('--force-other-sim-encoder', choices=['auto', 'tfidf', 'sbert'], default='auto',
+                        help='When --cosine-model is provided, choose which encoder to use from that SECOND model.')
+    args = parser.parse_args(argv)
+
+    # Load primary (classification) model
+    pipeline, label_encoder = load_pipeline_and_encoder(args.model)
+
+    # Determine class names from primary model
+    if label_encoder is not None:
+        model_class_names = list(label_encoder.classes_)
+    elif hasattr(pipeline, 'classes_'):
+        model_class_names = list(pipeline.classes_)
+    elif hasattr(pipeline, 'steps'):
+        final = pipeline.steps[-1][1]
+        model_class_names = list(getattr(final, 'classes_', []))
+    else:
+        model_class_names = []
+
+    canonical_names = ['Other', 'phishing']
+
+    # Load data
+    with open(args.json, 'r', encoding='utf8') as f:
+        raw = json.load(f)
+
+    rows = []
+    for item in raw:
+        o = item.get('original_text') or item.get('original') or item.get('text')
+        r = item.get('rephrased_text') or item.get('rephrased') or item.get('rephrased_text', '')
+        src = item.get('source') or item.get('label') or item.get('y')
+        if o is None or r is None or src is None:
+            continue
+        true_cname = canonicalize_label(src)
+        rows.append({'original_text': o, 'rephrased_text': r, 'source_raw': src, 'true_canonical': true_cname})
+
+    if args.only_phishing:
+        rows = [r for r in rows if r['true_canonical'] == 'phishing']
+
+    # Canonical index for primary model
+    class_index = {c: i for i, c in enumerate(model_class_names)} if model_class_names else {}
+    canonical_index = {}
+    for cname in canonical_names:
+        if cname in class_index:
+            canonical_index[cname] = class_index[cname]
+        else:
+            if len(model_class_names) == 2:
+                canonical_index['Other'] = 0
+                canonical_index['phishing'] = 1
+                break
+            else:
+                found = None
+                for k in model_class_names:
+                    if 'phish' in str(k).lower() or 'spam' in str(k).lower():
+                        found = k
+                        break
+                if found is not None and model_class_names:
+                    canonical_index['phishing'] = class_index[found]
+                    for k2 in model_class_names:
+                        if k2 != found:
+                            canonical_index['Other'] = class_index[k2]
+                            break
+                else:
+                    canonical_index['phishing'] = max(len(model_class_names) - 1, 0) if model_class_names else 1
+                    canonical_index['Other'] = 0
+
+    # Helper to get feature steps + kind from a given pipeline and mode
+    def steps_for(p, mode: str):
+        if p is None:
+            return [], 'token-fallback'
+        if mode == 'auto':
+            steps, inferred = _iter_feature_steps_auto(p)
+            kind = inferred or ('auto-encoder' if steps else 'token-fallback')
+            return steps, kind
+        elif mode in ('tfidf', 'sbert'):
+            steps, kind = _iter_feature_steps_forced(p, mode)
+            kind = kind or 'token-fallback'
+            return steps, kind
+        else:
+            return [], 'token-fallback'
+
+    # PRIMARY cosine steps from PRIMARY model
+    primary_steps, primary_kind = steps_for(pipeline, args.force_sim_encoder)
+
+    # Determine OTHER cosine steps/kind
+    other_steps = []
+    other_kind = 'token-fallback'
+    other_source_tag = ''
+
+    if args.cosine_model:
+        cos_pipeline, _ = load_pipeline_and_encoder(args.cosine_model)
+        other_steps, other_kind = steps_for(cos_pipeline, args.force_other_sim_encoder)
+        other_source_tag = 'cos2'
+        # If auto couldn't infer, try opposite of primary as heuristic
+        if other_kind in ('auto-encoder', 'token-fallback'):
+            if primary_kind == 'tfidf':
+                tmp_steps, tmp_kind = steps_for(cos_pipeline, 'sbert')
+            elif primary_kind == 'sbert':
+                tmp_steps, tmp_kind = steps_for(cos_pipeline, 'tfidf')
+            else:
+                tmp_steps, tmp_kind = steps_for(cos_pipeline, 'sbert')
+            if tmp_steps:
+                other_steps, other_kind = tmp_steps, tmp_kind
+    else:
+        if primary_kind == 'tfidf':
+            other_steps, other_kind = steps_for(pipeline, 'sbert')
+        elif primary_kind == 'sbert':
+            other_steps, other_kind = steps_for(pipeline, 'tfidf')
+        else:
+            other_steps, other_kind = steps_for(pipeline, 'auto')
+
+    thresholds = [0.90, 0.80, 0.70]
+
+    # Per-threshold runs
+    base_csv_root, base_csv_ext = os.path.splitext(args.out_csv) if args.out_csv else (None, None)
+    base_sum_root, base_sum_ext = os.path.splitext(args.out_summary) if args.out_summary else (None, None)
+
+    for thr in thresholds:
+        pct = int(round(thr * 100))
+
+        # PRIMARY run filenames
+        out_csv_primary = f"{base_csv_root}_enc-{primary_kind}_t-{pct}{base_csv_ext}" if base_csv_root else None
+        out_sum_primary = f"{base_sum_root}_enc-{primary_kind}_t-{pct}{base_sum_ext}" if base_sum_root else None
+
+        # OTHER run filenames
+        if base_csv_root:
+            tag = f"enc-{other_kind}_t-{pct}"
+            if other_source_tag:
+                tag = f"{tag}_{other_source_tag}"
+            out_csv_other = f"{base_csv_root}_{tag}{base_csv_ext}"
+        else:
+            out_csv_other = None
+
+        if base_sum_root:
+            tag = f"enc-{other_kind}_t-{pct}"
+            if other_source_tag:
+                tag = f"{tag}_{other_source_tag}"
+            out_sum_other = f"{base_sum_root}_{tag}{base_sum_ext}"
+        else:
+            out_sum_other = None
+
+        # PRIMARY run
+        run_once(pipeline, rows, primary_steps, primary_kind, thr, model_class_names, canonical_index,
+                 out_csv=out_csv_primary, out_summary=out_sum_primary)
+
+        # OTHER run
+        run_once(pipeline, rows, other_steps, other_kind, thr, model_class_names, canonical_index,
+                 out_csv=out_csv_other, out_summary=out_sum_other)
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())
