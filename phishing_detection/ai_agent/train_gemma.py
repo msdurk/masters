@@ -6,108 +6,123 @@ from datasets import load_dataset
 from peft import LoraConfig, get_peft_model, TaskType
 from transformers import (
     AutoTokenizer,
-    AutoModelForCausalLM,
+    Gemma3ForCausalLM,  # Specific class for Gemma 3
     TrainingArguments,
     Trainer,
-    DataCollatorForSeq2Seq, # Handles padding labels to -100 automatically
+    DataCollatorForSeq2Seq,
+    BitsAndBytesConfig
 )
 import evaluate
 
 # ---------------------------------------------------------
 # 1. CONFIGURATION
 # ---------------------------------------------------------
-# Update this to your actual model path
-LOCAL_DIR = Path("/fp/projects01/ec12/mathisdu/llama/Llama-3.1-8B-Instruct")
-OUTPUT_DIR = "/fp/projects01/ec12/mathisdu/llama/llama-3.1-8b-phish-lora-classifier"
+# We use the Model ID since you downloaded it to the cache in the previous step
+MODEL_ID = "/fp/projects01/ec12/mathisdu/gemma/models--google--gemma-3-27b-it" 
+# If you are using the 4B model, change above to: "google/gemma-3-4b-it"
 
+OUTPUT_DIR = "/fp/projects01/ec12/mathisdu/gemma"
+
+# Update these paths to your actual data locations
 data_files = {
     "train": "/fp/homes01/u01/ec-mathiassd/phishing_detection/ai_agent/data/ephish/train.csv",
-    "validation": "/fp/homes01/u01/ec-mathiassd/phishing_detection/ai_agent/data/ephish/val.csv",
-    "test": "/fp/homes01/u01/ec-mathiassd/phishing_detection/ai_agent/data/ephish/test.csv",
+    "validation": "/fp/homes01/u01/ec-mathiassd/phishing_detection/ai_agent/data/ephish/val.csv"
 }
 
-# System prompt enforces the "Classifier" behavior
-SYSTEM_PROMPT = """You are a strict email security classifier.
+# Gemma doesn't support "System" roles natively, so we prepend this to the User prompt later
+SYSTEM_INSTRUCTION = """You are a strict email security classifier.
 Task: Analyze the email and determine if it is safe or phishing.
-Output: Respond ONLY with '0' for safe or '1' for phishing. Do not provide explanations."""
+Output: Respond ONLY with '0' for safe or '1' for phishing. Do not provide explanations.
+"""
 
 # ---------------------------------------------------------
 # 2. MODEL & TOKENIZER SETUP
 # ---------------------------------------------------------
-print(">>> Loading Model and Tokenizer...")
-tok = AutoTokenizer.from_pretrained(LOCAL_DIR)
-llama = AutoModelForCausalLM.from_pretrained(
-    LOCAL_DIR,
-    torch_dtype=torch.bfloat16, # Native A100 precision
-    device_map="auto"
+print(f">>> Loading Model: {MODEL_ID}...")
+
+# 1. Load Tokenizer
+tok = AutoTokenizer.from_pretrained(MODEL_ID)
+tok.padding_side = "right"
+
+# Fix Padding: Gemma usually has a pad token, but if not, use EOS
+if tok.pad_token is None:
+    tok.pad_token = tok.eos_token
+
+# 2. Load Model (Optimized for A100)
+# If you have the 40GB A100, use 4-bit loading. If 80GB, you can try setting load_in_4bit=False
+bnb_config = BitsAndBytesConfig(
+    load_in_4bit=True,
+    bnb_4bit_quant_type="nf4",
+    bnb_4bit_compute_dtype=torch.bfloat16
 )
 
-# Llama 3 doesn't have a pad token by default. We use EOS.
-tok.pad_token = tok.eos_token
-llama.config.pad_token_id = tok.eos_token_id
-tok.padding_side = "right" # Right padding is standard for training
+model = Gemma3ForCausalLM.from_pretrained(
+    MODEL_ID,
+    quantization_config=bnb_config,
+    attn_implementation="flash_attention_2", # <--- A100 Superpower
+    torch_dtype=torch.bfloat16,
+    device_map="auto"
+)
 
 # ---------------------------------------------------------
 # 3. LORA CONFIGURATION
 # ---------------------------------------------------------
-# Targeted optimization for Llama 3
 lora_config = LoraConfig(
-    r=16,                 # Increased from 8 for better learning capacity
-    lora_alpha=32,        # usually 2x r
+    r=16,
+    lora_alpha=32,
     lora_dropout=0.05,
     bias="none",
     task_type=TaskType.CAUSAL_LM,
-    # IMPORTANT: Target all linear layers for best Llama 3 performance
-    target_modules=["q_proj", "v_proj", "k_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
+    # Gemma uses standard projection names, targeting all gives best results
+    target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
 )
 
-model = get_peft_model(llama, lora_config)
+model = get_peft_model(model, lora_config)
 model.print_trainable_parameters()
 
 # ---------------------------------------------------------
-# 4. DATA PROCESSING (The Critical Fix)
+# 4. DATA PROCESSING
 # ---------------------------------------------------------
 max_len = 512
 label_to_text = {0: "0", 1: "1"}
 
 def format_and_tokenize(example):
-    """
-    Formats text as a chat, tokenizes everything at once to preserve
-    BPE boundaries, and masks the prompt so loss is ONLY calculated on the label.
-    """
-    # A. Create the prompt using the official template
+    # A. MERGE SYSTEM PROMPT FOR GEMMA
+    # Gemma template is strict: <start_of_turn>user ... <end_of_turn>
+    # It rejects "system" roles. We merge instructions into the user turn.
+    full_user_content = f"{SYSTEM_INSTRUCTION}\n\nEmail Content:\n{example['text']}"
+
     messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": example["text"]},
+        {"role": "user", "content": full_user_content},
     ]
-    # Get the formatted prompt (without the answer yet)
+    
+    # B. Apply Template (Prompt only)
     prompt_text = tok.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
     
-    # B. Get the target text ("0" or "1")
+    # C. Target Text
     target_text = label_to_text[int(example["label"])]
     
-    # C. Tokenize Prompt + Target together
-    # We add the EOS token manually at the end
+    # D. Full Text + EOS
     full_text = prompt_text + target_text + tok.eos_token
     
+    # E. Tokenize
     tokenized = tok(
         full_text,
         truncation=True,
         max_length=max_len,
-        padding=False, # Padding handled by Data Collator later
-        add_special_tokens=False # apply_chat_template already added BOS
+        padding=False,
+        add_special_tokens=False
     )
     
     input_ids = tokenized["input_ids"]
     attention_mask = tokenized["attention_mask"]
     labels = input_ids.copy()
 
-    # D. MASKING: Find the length of the prompt and set labels to -100
-    # This ensures the model is NOT punished for not memorizing the email content
+    # F. MASKING (Loss only on the answer '0' or '1')
     prompt_ids = tok(prompt_text, add_special_tokens=False)["input_ids"]
     prompt_len = len(prompt_ids)
 
-    # Mask the prompt parts
+    # Set prompt tokens to -100 so model isn't trained to memorize the email
     for i in range(min(prompt_len, len(labels))):
         labels[i] = -100
 
@@ -120,45 +135,28 @@ def format_and_tokenize(example):
 print(">>> Processing datasets...")
 raw_datasets = load_dataset("csv", data_files=data_files)
 tokenized_datasets = raw_datasets.map(format_and_tokenize, batched=False)
-
-# Remove columns we don't need anymore to prevent collator errors
 tokenized_datasets = tokenized_datasets.remove_columns(["text", "label"])
 
 # ---------------------------------------------------------
-# 5. METRICS (Optimized for Memory)
+# 5. METRICS
 # ---------------------------------------------------------
 accuracy = evaluate.load("accuracy")
 
 def compute_metrics(eval_pred):
-    # Because of preprocess_logits_for_metrics, 'predictions' are already
-    # the argmax integers, not the huge float logits.
     predictions, labels = eval_pred
-    
-    # 'predictions' shape: [batch_size, seq_len]
-    # 'labels' shape:      [batch_size, seq_len]
-    
     true_labels = []
     pred_labels = []
     
-    # Iterate through the batch
     for i in range(len(labels)):
-        # Find the indices where the label is NOT -100 (the actual answer "0" or "1")
         valid_indices = np.where(labels[i] != -100)[0]
-        
         if len(valid_indices) > 0:
-            # We care about the LAST valid token (the class label)
             target_idx = valid_indices[-1]
-            
-            # Get the predicted token ID and the true token ID at that position
             pred_token_id = predictions[i][target_idx]
             true_token_id = labels[i][target_idx]
             
-            # Decode them to text (e.g., id 15 -> "0")
             pred_txt = tok.decode([pred_token_id]).strip()
             true_txt = tok.decode([true_token_id]).strip()
             
-            # Convert to binary 0/1 for accuracy calculation
-            # We default to 0 (safe) if the model outputs nonsense
             p = 1 if pred_txt == "1" else 0
             l = 1 if true_txt == "1" else 0
             
@@ -166,37 +164,24 @@ def compute_metrics(eval_pred):
             true_labels.append(l)
 
     return accuracy.compute(predictions=pred_labels, references=true_labels)
-# ---------------------------------------------------------
-# 6. TRAINER SETUP (With Memory Fix)
-# ---------------------------------------------------------
 
-# Helper to shrink logits on GPU
 def preprocess_logits_for_metrics(logits, labels):
-    """
-    Original Logits: [Batch, Seq, Vocab] -> Massive Memory
-    Optimized:       [Batch, Seq]        -> Tiny Memory
-    """
     if isinstance(logits, tuple):
-        # Depending on model, logits might be a tuple (logits, past_key_values)
         logits = logits[0]
-    
-    # We immediately take the argmax (highest probability token)
-    # This converts huge floats to small integers
     return logits.argmax(dim=-1)
 
+# ---------------------------------------------------------
+# 6. TRAINER
+# ---------------------------------------------------------
 training_args = TrainingArguments(
     output_dir=OUTPUT_DIR,
     per_device_train_batch_size=4, 
-    gradient_accumulation_steps=8,
-    
-    # --- EVALUATION OPTIMIZATION ---
-    per_device_eval_batch_size=4,   # Keep this small
-    eval_accumulation_steps=1,      # Force offloading to CPU immediately
-    # -------------------------------
-
+    gradient_accumulation_steps=4, # Adjusted for 27B model size
+    per_device_eval_batch_size=4,
+    eval_accumulation_steps=1,
     learning_rate=2e-4,
     num_train_epochs=1,
-    bf16=True,
+    bf16=True,             # Essential for A100
     logging_steps=10,
     eval_strategy="steps",
     eval_steps=50,
@@ -211,12 +196,10 @@ trainer = Trainer(
     model=model,
     args=training_args,
     train_dataset=tokenized_datasets["train"],
-    eval_dataset=tokenized_datasets["validation"],
+    eval_dataset=tokenized_datasets.get("validation"), # Handle if val is missing
     tokenizer=tok,
     data_collator=DataCollatorForSeq2Seq(tok, pad_to_multiple_of=8),
     compute_metrics=compute_metrics,
-    
-    # ADD THIS LINE TO FIX THE OOM ERROR:
     preprocess_logits_for_metrics=preprocess_logits_for_metrics,
 )
 
