@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=adv_test_v2
+#SBATCH --job-name=adv_test_all
 #SBATCH --account=ec12
 #SBATCH --partition=accel    
 #SBATCH --gpus=a100:1        
@@ -19,4 +19,4 @@ source /fp/projects01/ec12/mathisdu/llm_env/bin/activate
 echo "Job started on $(hostname)"
 echo "GPU Info: $(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader)"
 
-python adversarial_v2.py
+python run_all_attacks.py

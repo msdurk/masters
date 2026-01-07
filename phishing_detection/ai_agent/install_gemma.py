@@ -3,7 +3,7 @@ from huggingface_hub import snapshot_download
 
 # --- CONFIGURATION ---
 # Replace this with the specific model you want (e.g., gemma-3-27b-it)
-MODEL_ID = "google/gemma-3-27b-it"
+MODEL_ID = "google/gemma-3-4b-it"
 
 # Get token from environment variable (safest) or paste it here
 HF_TOKEN = os.getenv("HF_TOKEN") 
