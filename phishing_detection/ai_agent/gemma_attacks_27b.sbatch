@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=gemma_adv
+#SBATCH --job-name=gemma_adv_27b
 #SBATCH --account=ec12
 #SBATCH --partition=accel    
 #SBATCH --gpus=a100:1        
@@ -21,4 +21,7 @@ echo "Job started on $(hostname)"
 echo "GPU Info: $(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader)"
 
 # 3. Run the Gemma-specific attack script
-python run_gemma_attacks.py
+python run_gemma_attacks.py \
+    --size 27b \
+    --adapter /fp/projects01/ec12/mathisdu/gemma/final_adapter-v2_fixed \
+    --output results_27b.csv
