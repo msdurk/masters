@@ -1,2 +1,0 @@
-https://www.kaggle.com/datasets/francescogreco97/human-llm-generated-phishing-legitimate-emails/data?select=llm-generated
-https://huggingface.co/datasets/zefang-liu/phishing-email-dataset/tree/main
